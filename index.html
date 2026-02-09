@@ -69,7 +69,8 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
             }
         }
     </script>
@@ -91,6 +92,7 @@
 
     <script type="module">
         import * as THREE from 'three';
+        import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 
         // --- Custom PointerLockControls ---
         const _vector = new THREE.Vector3();
@@ -734,6 +736,7 @@
         function buildExhibitsAndArt(goldMat, spotlightGoldMat) {
             const textureLoader = new THREE.TextureLoader(loadingManager);
             textureLoader.setCrossOrigin('anonymous');
+            const plyLoader = new PLYLoader(loadingManager);
 
             // --- 1. Logos ---
             textureLoader.load(LOGO_URL, (tex) => {
@@ -782,6 +785,40 @@
                 { id: 'west', pos: new THREE.Vector3(-15, 0, 0), shape: 'octahedron', wallNormal: new THREE.Vector3(1, 0, 0), paintings: [6, 7, 8] }  
             ];
 
+            const plyFiles = {
+                north: '3D Models/Statue 2.ply',
+                south: '3D Models/Pot.ply',
+                east: '3D Models/Golden.ply',
+                west: '3D Models/bowl 1.ply'
+            };
+
+            const alignArtifactToPedestal = (mesh, targetPosition, targetHeight = 1.2, pedestalTopY = 2.2) => {
+                const geometry = mesh.geometry;
+                geometry.computeVertexNormals();
+                geometry.computeBoundingBox();
+
+                const box = geometry.boundingBox;
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                if (size.y > 0) {
+                    const scale = targetHeight / size.y;
+                    mesh.scale.setScalar(scale);
+                }
+
+                mesh.position.set(targetPosition.x, pedestalTopY, targetPosition.z);
+                mesh.updateMatrixWorld(true);
+
+                const worldBox = new THREE.Box3().setFromObject(mesh);
+                const center = worldBox.getCenter(new THREE.Vector3());
+                mesh.position.x += targetPosition.x - center.x;
+                mesh.position.z += targetPosition.z - center.z;
+
+                mesh.updateMatrixWorld(true);
+                const alignedBox = new THREE.Box3().setFromObject(mesh);
+                const yOffset = pedestalTopY - alignedBox.min.y;
+                mesh.position.y += yOffset;
+            };
+
             exhibitConfs.forEach((conf) => {
                 // Pedestal
                 const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
@@ -798,17 +835,30 @@
                 
                 collidableObjects.push({ type: 'box', x: conf.pos.x, z: conf.pos.z, size: 2.5 });
 
-                let artifactGeo;
-                if (conf.shape === 'dodecahedron') artifactGeo = new THREE.DodecahedronGeometry(0.7);
-                else if (conf.shape === 'torus') artifactGeo = new THREE.TorusGeometry(0.5, 0.2, 16, 100);
-                else if (conf.shape === 'icosahedron') artifactGeo = new THREE.IcosahedronGeometry(0.7);
-                else artifactGeo = new THREE.OctahedronGeometry(0.7);
+                const artifactTarget = new THREE.Object3D();
+                artifactTarget.position.set(conf.pos.x, 2.2, conf.pos.z);
+                scene.add(artifactTarget);
 
-                const artifact = new THREE.Mesh(artifactGeo, goldArtifactMat);
-                artifact.position.set(conf.pos.x, 2.2, conf.pos.z);
-                artifact.castShadow = true;
-                scene.add(artifact);
-                rotatingArtifacts.push(artifact);
+                const plyFile = plyFiles[conf.id];
+                if (plyFile) {
+                    plyLoader.load(plyFile, (geometry) => {
+                        const artifact = new THREE.Mesh(geometry, goldArtifactMat);
+                        artifact.castShadow = true;
+                        artifact.receiveShadow = true;
+                        alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
+
+                        const lookTarget = new THREE.Vector3(0, artifact.position.y, 0);
+                        artifact.lookAt(lookTarget);
+                        artifact.userData.baseRotationY = artifact.rotation.y;
+                        artifactTarget.position.copy(artifact.position);
+                        scene.add(artifact);
+                        rotatingArtifacts.push({
+                            mesh: artifact,
+                            baseRotationY: artifact.userData.baseRotationY,
+                            speed: 0.2
+                        });
+                    });
+                }
 
                 const artifactLight = new THREE.PointLight(0xffaa00, 2, 5);
                 artifactLight.position.set(conf.pos.x, 3.5, conf.pos.z);
@@ -820,7 +870,7 @@
                 spotLight.penumbra = 0.3;
                 spotLight.decay = 1.5;
                 spotLight.distance = 50;
-                spotLight.target = artifact;
+                spotLight.target = artifactTarget;
                 spotLight.castShadow = true;
                 scene.add(spotLight);
                 scene.add(spotLight.target);
@@ -963,9 +1013,12 @@
                 }
             }
 
-            rotatingArtifacts.forEach((art, idx) => {
-                art.rotation.x += 0.01 * (idx % 2 === 0 ? 1 : -1);
-                art.rotation.y += 0.02;
+            const rotationTime = performance.now() * 0.001;
+            rotatingArtifacts.forEach((entry, idx) => {
+                const mesh = entry.mesh || entry;
+                const baseRotationY = entry.baseRotationY ?? mesh.userData.baseRotationY ?? mesh.rotation.y;
+                const speed = entry.speed ?? 0.15 + (idx % 2) * 0.05;
+                mesh.rotation.y = baseRotationY + rotationTime * speed;
             });
 
             prevTime = time;
