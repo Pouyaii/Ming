@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ming Dynasty Immersive Museum</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Times New Roman', serif;
+            background-color: #000;
+        }
+        #instructions {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.85);
+            color: #FFD840;
+            z-index: 10;
+            text-align: center;
+            cursor: pointer;
+            transition: opacity 0.5s;
+        }
+        #program-logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            border-bottom: 2px solid #FFD840;
+            padding-bottom: 20px;
+        }
+        p {
+            font-size: 1.2rem;
+            color: #ccc;
+        }
+        .controls {
+            margin-top: 20px;
+            font-size: 1rem;
+            color: #888;
+            border: 1px solid #444;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        #loading {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            font-family: monospace;
+            pointer-events: none;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="instructions">
+        <img id="program-logo" src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Seal_of_Ming_dynasty.svg/960px-Seal_of_Ming_dynasty.svg.png" alt="Ming Seal">
+        <h1>The Ming Hall</h1>
+        <p>Click anywhere to Enter</p>
+        <div class="controls">
+            <b>WASD</b> to Move<br>
+            <b>MOUSE</b> to Look<br>
+            <b>ESC</b> to Pause
+        </div>
+    </div>
+
+    <div id="loading">Loading Assets...</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Custom PointerLockControls ---
+        const _vector = new THREE.Vector3();
+        const _euler = new THREE.Euler( 0, 0, 0, 'YXZ' );
+        const _PI_2 = Math.PI / 2;
+
+        class PointerLockControls extends THREE.EventDispatcher {
+            constructor( camera, domElement ) {
+                super();
+                this.camera = camera;
+                this.domElement = domElement;
+                this.isLocked = false;
+                this.minPolarAngle = 0;
+                this.maxPolarAngle = Math.PI;
+                this.pointerSpeed = 1.0;
+
+                this._onMouseMove = this.onMouseMove.bind( this );
+                this._onPointerlockChange = this.onPointerlockChange.bind( this );
+                this._onPointerlockError = this.onPointerlockError.bind( this );
+
+                this.connect();
+            }
+
+            connect() {
+                this.domElement.ownerDocument.addEventListener( 'mousemove', this._onMouseMove );
+                this.domElement.ownerDocument.addEventListener( 'pointerlockchange', this._onPointerlockChange );
+                this.domElement.ownerDocument.addEventListener( 'pointerlockerror', this._onPointerlockError );
+            }
+
+            disconnect() {
+                this.domElement.ownerDocument.removeEventListener( 'mousemove', this._onMouseMove );
+                this.domElement.ownerDocument.removeEventListener( 'pointerlockchange', this._onPointerlockChange );
+                this.domElement.ownerDocument.removeEventListener( 'pointerlockerror', this._onPointerlockError );
+            }
+
+            lock() {
+                try {
+                    const promise = this.domElement.requestPointerLock();
+                    if (promise && typeof promise.catch === 'function') {
+                        promise.catch((err) => {
+                            console.warn("PointerLock request failed:", err);
+                        });
+                    }
+                } catch (e) {
+                    console.warn("PointerLock sync error:", e);
+                }
+            }
+
+            unlock() {
+                this.domElement.ownerDocument.exitPointerLock();
+            }
+
+            onMouseMove( event ) {
+                if ( this.isLocked === false ) return;
+                const movementX = event.movementX || 0;
+                const movementY = event.movementY || 0;
+                if ( Math.abs(movementX) > 100 || Math.abs(movementY) > 100 ) return;
+                _euler.setFromQuaternion( this.camera.quaternion );
+                _euler.y -= movementX * 0.002 * this.pointerSpeed;
+                _euler.x -= movementY * 0.002 * this.pointerSpeed;
+                _euler.x = Math.max( _PI_2 - this.maxPolarAngle, Math.min( _PI_2 - this.minPolarAngle, _euler.x ) );
+                this.camera.quaternion.setFromEuler( _euler );
+                this.dispatchEvent( { type: 'change' } );
+            }
+
+            onPointerlockChange() {
+                if ( this.domElement.ownerDocument.pointerLockElement === this.domElement ) {
+                    this.dispatchEvent( { type: 'lock' } );
+                    this.isLocked = true;
+                } else {
+                    this.dispatchEvent( { type: 'unlock' } );
+                    this.isLocked = false;
+                }
+            }
+
+            onPointerlockError() {
+                console.warn( 'PointerLockControls: Unable to use Pointer Lock API' );
+            }
+            
+            getObject() { return this.camera; }
+            moveRight( distance ) {
+                _vector.setFromMatrixColumn( this.camera.matrix, 0 );
+                this.camera.position.addScaledVector( _vector, distance );
+            }
+            moveForward( distance ) {
+                _vector.setFromMatrixColumn( this.camera.matrix, 0 );
+                _vector.crossVectors( this.camera.up, _vector );
+                this.camera.position.addScaledVector( _vector, distance );
+            }
+        }
+
+        // --- Configuration ---
+        const ROOM_WIDTH = 50;
+        const ROOM_DEPTH = 50;
+        const ROOM_HEIGHT = 16;
+        const WALL_THICKNESS = 1;
+        
+        // Physics
+        const STAND_HEIGHT = 1.7;
+        const CROUCH_HEIGHT = 1.0;
+        const PLAYER_SPEED = 10.0;
+        const SPRINT_SPEED = 18.0; 
+        const CROUCH_SPEED = 4.0;
+        const GRAVITY = 300.0; 
+        const JUMP_FORCE = 25.0; 
+        
+        // Colors
+        const COL_IMPERIAL_RED = 0x9B1B30; 
+        const COL_GOLD = 0xFFD840; // Vibrant Ming Gold
+        const COL_MING_BLUE = 0x102E4A; // Lapiz/Cobalt
+        const COL_DARK_WOOD = 0x3F2A14;
+        const COL_WALL = 0xAA3333; 
+
+        // Assets
+        const LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Ming_dynasty_%28Chinese_characters%29.svg/2560px-Ming_dynasty_%28Chinese_characters%29.svg.png';
+        const LONG_PAINTING_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/%E5%8D%97%E9%83%BD%E7%B9%81%E6%9C%83%E5%9C%96_01.jpg/2560px-%E5%8D%97%E9%83%BD%E7%B9%81%E6%9C%83%E5%9C%96_01.jpg';
+        
+        const PAINTINGS = [
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/A_Seated_Portrait_of_Ming_Emperor_Taizu.jpg/960px-A_Seated_Portrait_of_Ming_Emperor_Taizu.jpg', title: 'Emperor Taizu' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Ch%27iu_Ying_001.jpg/1280px-Ch%27iu_Ying_001.jpg', title: 'Chiu Ying' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Portrait_of_Jiang_Shunfu.jpg', title: 'Jiang Shunfu' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Portrait_assis_de_l%27empereur_Ming_Chengzu.jpg/960px-Portrait_assis_de_l%27empereur_Ming_Chengzu.jpg', title: 'Emperor Chengzu' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Detail_of_The_Emperor%27s_Approach%2C_Xuande_period.jpg/960px-Detail_of_The_Emperor%27s_Approach%2C_Xuande_period.jpg', title: 'Emperors Approach' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Ji_Sheng-Peddler.jpg/500px-Ji_Sheng-Peddler.jpg', title: 'Peddler' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Chen_Hongshou%2C_leaf_album_painting.jpg/960px-Chen_Hongshou%2C_leaf_album_painting.jpg', title: 'Chen Hongshou' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Lofty_Mt.Lu_by_Shen_Zhou.jpg/500px-Lofty_Mt.Lu_by_Shen_Zhou.jpg', title: 'Lofty Mt. Lu' },
+            { url: 'https://upload.wikimedia.org/wikipedia/commons/3/33/Ming_Emperor_Xuande_playing_Golf.jpg', title: 'Xuande Playing Golf' }
+        ];
+
+        // --- Globals ---
+        let camera, scene, renderer, controls;
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        let canJump = false;
+        let isSprinting = false;
+        let isCrouching = false;
+
+        let prevTime = performance.now();
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+        let loadingManager;
+        
+        const collidableObjects = []; 
+        const rotatingArtifacts = [];
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111111);
+            scene.fog = new THREE.Fog(0x111111, 10, 70);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.y = STAND_HEIGHT;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0; 
+            document.body.appendChild(renderer.domElement);
+
+            loadingManager = new THREE.LoadingManager();
+            loadingManager.onLoad = function () {
+                const loadingScreen = document.getElementById('loading');
+                if (loadingScreen) loadingScreen.style.display = 'none';
+            };
+            loadingManager.onProgress = function (url, itemsLoaded, itemsTotal) {
+                const loadingScreen = document.getElementById('loading');
+                if (loadingScreen) loadingScreen.innerText = `Loading Assets... ${Math.round((itemsLoaded / itemsTotal) * 100)}%`;
+            };
+
+            controls = new PointerLockControls(camera, document.body);
+
+            const instructions = document.getElementById('instructions');
+            instructions.addEventListener('click', function () {
+                window.focus(); 
+                controls.lock();
+            });
+            
+            document.addEventListener('pointerlockerror', (event) => {
+                instructions.style.display = 'flex';
+            });
+
+            controls.addEventListener('lock', function () {
+                instructions.style.display = 'none';
+            });
+
+            controls.addEventListener('unlock', function () {
+                instructions.style.display = 'flex';
+            });
+
+            scene.add(controls.getObject());
+
+            const onKeyDown = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW': moveForward = true; break;
+                    case 'ArrowLeft':
+                    case 'KeyA': moveLeft = true; break;
+                    case 'ArrowDown':
+                    case 'KeyS': moveBackward = true; break;
+                    case 'ArrowRight':
+                    case 'KeyD': moveRight = true; break;
+                    case 'Space': 
+                        if (canJump === true) velocity.y += JUMP_FORCE;
+                        canJump = false;
+                        break;
+                    case 'ShiftLeft':
+                    case 'ShiftRight': isSprinting = true; break;
+                    case 'ControlLeft': isCrouching = true; break;
+                }
+            };
+
+            const onKeyUp = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW': moveForward = false; break;
+                    case 'ArrowLeft':
+                    case 'KeyA': moveLeft = false; break;
+                    case 'ArrowDown':
+                    case 'KeyS': moveBackward = false; break;
+                    case 'ArrowRight':
+                    case 'KeyD': moveRight = false; break;
+                    case 'ShiftLeft':
+                    case 'ShiftRight': isSprinting = false; break;
+                    case 'ControlLeft': isCrouching = false; break;
+                }
+            };
+
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            buildRoom();
+            buildLighting();
+            buildExhibitsAndArt();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // --- Procedural Textures ---
+
+        function createMandalaTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            const cx = 512;
+            const cy = 512;
+
+            // Background
+            ctx.fillStyle = '#2A1A0A';
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            // Outer Gold Ring - MATCHING VIBRANT GOLD COLOR
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 20;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 480, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Inner Ming Blue Ring (Texture Ring)
+            ctx.strokeStyle = '#102E4A'; 
+            ctx.lineWidth = 40;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 350, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Radial Beams - MATCHING VIBRANT GOLD COLOR
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 10;
+            for (let i = 0; i < 16; i++) {
+                const angle = (i / 16) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(angle) * 100, cy + Math.sin(angle) * 100);
+                ctx.lineTo(cx + Math.cos(angle) * 480, cy + Math.sin(angle) * 480);
+                ctx.stroke();
+            }
+
+            // Central Sun - MATCHING VIBRANT GOLD COLOR
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 100, 0, Math.PI * 2);
+            ctx.fill();
+
+            const tex = new THREE.CanvasTexture(canvas);
+
+            // Async load Logo, scale it down to fit center, color it Red
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.onload = function() {
+                const tCanvas = document.createElement('canvas');
+                tCanvas.width = img.width;
+                tCanvas.height = img.height;
+                const tCtx = tCanvas.getContext('2d');
+                
+                tCtx.drawImage(img, 0, 0);
+                tCtx.globalCompositeOperation = 'source-in';
+                tCtx.fillStyle = '#9B1B30'; // Imperial Red for Logo
+                tCtx.fillRect(0, 0, tCanvas.width, tCanvas.height);
+
+                // Draw centered, scaled down to fit inside radius 100
+                const size = 140;
+                ctx.drawImage(tCanvas, cx - size/2, cy - size/2, size, size);
+                tex.needsUpdate = true;
+            };
+            img.src = LOGO_URL;
+
+            return tex;
+        }
+
+        function createBloodwoodTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#4a0404'; 
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            for (let i = 0; i < 50000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#5c0a0a' : '#330000';
+                const x = Math.random() * 1024;
+                const y = Math.random() * 1024;
+                const l = Math.random() * 50 + 10;
+                ctx.fillRect(x, y, l, 2);
+            }
+
+            const brickW = 200;
+            const brickH = 50;
+            ctx.strokeStyle = '#220000'; 
+            ctx.lineWidth = 3;
+
+            for (let y = 0; y < 1024; y += brickH) {
+                const offset = (y / brickH) % 2 === 0 ? 0 : brickW / 2;
+                for (let x = -brickW; x < 1024; x += brickW) {
+                    ctx.strokeRect(x + offset, y, brickW, brickH);
+                }
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(4, 4);
+            return tex;
+        }
+
+        function createCeramicTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#888888';
+            ctx.fillRect(0, 0, 512, 512);
+
+            for (let i = 0; i < 10000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#999999' : '#777777';
+                ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+            }
+
+            ctx.strokeStyle = '#555555';
+            ctx.lineWidth = 12; 
+            ctx.strokeRect(0, 0, 512, 512);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        // --- Environment Building ---
+
+        function buildRoom() {
+            const bloodwoodTex = createBloodwoodTexture();
+            const ceramicTex = createCeramicTexture();
+            
+            const ceramicTexH = ceramicTex.clone();
+            ceramicTexH.repeat.set(10, 2);
+            ceramicTexH.needsUpdate = true;
+
+            const ceramicTexV = ceramicTex.clone();
+            ceramicTexV.repeat.set(2, 7);
+            ceramicTexV.needsUpdate = true;
+
+            const woodFloorMat = new THREE.MeshStandardMaterial({ 
+                map: bloodwoodTex,
+                roughness: 0.35, 
+                metalness: 0.1,
+                color: 0xaa8888 
+            });
+            
+            const ceramicMatH = new THREE.MeshStandardMaterial({ 
+                map: ceramicTexH,
+                roughness: 0.1, 
+                metalness: 0.2,
+                color: 0xaaaaaa 
+            });
+
+            const ceramicMatV = new THREE.MeshStandardMaterial({ 
+                map: ceramicTexV,
+                roughness: 0.1, 
+                metalness: 0.2,
+                color: 0xaaaaaa 
+            });
+
+            const wallMat = new THREE.MeshStandardMaterial({ 
+                color: COL_WALL, 
+                roughness: 0.8 
+            });
+            
+            // Vibrant Ming Gold Material (General)
+            const goldMat = new THREE.MeshStandardMaterial({
+                color: 0xFFD700, 
+                roughness: 0.3,
+                metalness: 0.4,  
+                emissive: 0xaa8800,
+                emissiveIntensity: 0.2
+            });
+
+            // Special Gold Material for Spotlights (Pedestal Bases)
+            // No emissive to prevent whiteout under intense light
+            const spotlightGoldMat = new THREE.MeshStandardMaterial({
+                color: 0xCCAA00, // Slightly darker base
+                roughness: 0.2,  // Shinier
+                metalness: 0.6,  // More metal interaction with light
+                emissive: 0x000000,
+                emissiveIntensity: 0.0
+            });
+
+            // Floor
+            const woodGeo = new THREE.PlaneGeometry(34, 34);
+            const woodFloor = new THREE.Mesh(woodGeo, woodFloorMat);
+            woodFloor.rotation.x = - Math.PI / 2;
+            woodFloor.receiveShadow = true;
+            scene.add(woodFloor);
+
+            const ceramicGeoH = new THREE.PlaneGeometry(50, 8);
+            const ceramicGeoV = new THREE.PlaneGeometry(8, 34);
+
+            const cNorth = new THREE.Mesh(ceramicGeoH, ceramicMatH);
+            cNorth.rotation.x = - Math.PI / 2;
+            cNorth.position.set(0, 0, -21);
+            cNorth.receiveShadow = true;
+            scene.add(cNorth);
+
+            const cSouth = new THREE.Mesh(ceramicGeoH, ceramicMatH);
+            cSouth.rotation.x = - Math.PI / 2;
+            cSouth.position.set(0, 0, 21);
+            cSouth.receiveShadow = true;
+            scene.add(cSouth);
+
+            const cEast = new THREE.Mesh(ceramicGeoV, ceramicMatV);
+            cEast.rotation.x = - Math.PI / 2;
+            cEast.position.set(21, 0, 0);
+            cEast.receiveShadow = true;
+            scene.add(cEast);
+
+            const cWest = new THREE.Mesh(ceramicGeoV, ceramicMatV);
+            cWest.rotation.x = - Math.PI / 2;
+            cWest.position.set(-21, 0, 0);
+            cWest.receiveShadow = true;
+            scene.add(cWest);
+
+            // Ceiling
+            buildCeiling();
+
+            // Walls
+            const wallH = new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT, WALL_THICKNESS);
+            const wallV = new THREE.BoxGeometry(WALL_THICKNESS, ROOM_HEIGHT, ROOM_DEPTH);
+
+            const northWall = new THREE.Mesh(wallH, wallMat);
+            northWall.position.set(0, ROOM_HEIGHT/2, -ROOM_DEPTH/2 - WALL_THICKNESS/2);
+            northWall.receiveShadow = true;
+            scene.add(northWall);
+            collidableObjects.push({ 
+                min: { x: -ROOM_WIDTH/2, z: -ROOM_DEPTH/2 }, 
+                max: { x: ROOM_WIDTH/2, z: -ROOM_DEPTH/2 + WALL_THICKNESS } 
+            });
+
+            const southWall = new THREE.Mesh(wallH, wallMat);
+            southWall.position.set(0, ROOM_HEIGHT/2, ROOM_DEPTH/2 + WALL_THICKNESS/2);
+            southWall.receiveShadow = true;
+            scene.add(southWall);
+
+            const eastWall = new THREE.Mesh(wallV, wallMat);
+            eastWall.position.set(ROOM_WIDTH/2 + WALL_THICKNESS/2, ROOM_HEIGHT/2, 0);
+            eastWall.receiveShadow = true;
+            scene.add(eastWall);
+
+            const westWall = new THREE.Mesh(wallV, wallMat);
+            westWall.position.set(-ROOM_WIDTH/2 - WALL_THICKNESS/2, ROOM_HEIGHT/2, 0);
+            westWall.receiveShadow = true;
+            scene.add(westWall);
+
+            // Baseboards
+            const bbHeight = 0.8;
+            const bbDepth = 0.3; 
+            const bbGeoH = new THREE.BoxGeometry(ROOM_WIDTH - 0.1, bbHeight, bbDepth);
+            const bbGeoV = new THREE.BoxGeometry(bbDepth, bbHeight, ROOM_DEPTH - 0.1);
+
+            const bbNorth = new THREE.Mesh(bbGeoH, goldMat);
+            bbNorth.position.set(0, bbHeight/2, -ROOM_DEPTH/2 + bbDepth/2);
+            scene.add(bbNorth);
+
+            const bbSouth = new THREE.Mesh(bbGeoH, goldMat);
+            bbSouth.position.set(0, bbHeight/2, ROOM_DEPTH/2 - bbDepth/2);
+            scene.add(bbSouth);
+
+            const bbEast = new THREE.Mesh(bbGeoV, goldMat);
+            bbEast.position.set(ROOM_WIDTH/2 - bbDepth/2, bbHeight/2, 0);
+            scene.add(bbEast);
+
+            const bbWest = new THREE.Mesh(bbGeoV, goldMat);
+            bbWest.position.set(-ROOM_WIDTH/2 + bbDepth/2, bbHeight/2, 0);
+            scene.add(bbWest);
+
+            // Columns & Exhibits
+            buildColumns(goldMat);
+            buildExhibitsAndArt(goldMat, spotlightGoldMat);
+        }
+
+        function buildCeiling() {
+            const ceilingGroup = new THREE.Group();
+            
+            const mainMat = new THREE.MeshStandardMaterial({ color: 0x221100, roughness: 0.9 });
+            const backingGeo = new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH);
+            const backing = new THREE.Mesh(backingGeo, mainMat);
+            backing.rotation.x = Math.PI / 2;
+            backing.position.y = ROOM_HEIGHT + 1.0; 
+            ceilingGroup.add(backing);
+
+            const beamMat = new THREE.MeshStandardMaterial({ color: COL_DARK_WOOD, roughness: 0.6 });
+            const beamThickness = 0.8;
+            const beamDepth = 0.8;
+            
+            for (let z = -ROOM_DEPTH/2 + 5; z < ROOM_DEPTH/2; z += 5) {
+                const beamGeo = new THREE.BoxGeometry(ROOM_WIDTH, beamDepth, beamThickness);
+                const beam = new THREE.Mesh(beamGeo, beamMat);
+                beam.position.set(0, ROOM_HEIGHT, z);
+                ceilingGroup.add(beam);
+            }
+
+            for (let x = -ROOM_WIDTH/2 + 5; x < ROOM_WIDTH/2; x += 5) {
+                const beamGeo = new THREE.BoxGeometry(beamThickness, beamDepth, ROOM_DEPTH);
+                const beam = new THREE.Mesh(beamGeo, beamMat);
+                beam.position.set(x, ROOM_HEIGHT, 0);
+                ceilingGroup.add(beam);
+            }
+
+            const mandalaTexture = createMandalaTexture();
+            const mandalaMat = new THREE.MeshStandardMaterial({ 
+                map: mandalaTexture,
+                roughness: 0.3,
+                metalness: 0.4,
+                side: THREE.FrontSide
+            });
+            
+            const mandalaY = ROOM_HEIGHT - 0.5;
+            const mandalaGeo = new THREE.CylinderGeometry(8, 8, 0.4, 32);
+            const mandala = new THREE.Mesh(mandalaGeo, beamMat);
+            mandala.position.set(0, mandalaY, 0); 
+            ceilingGroup.add(mandala);
+
+            const featureGeo = new THREE.CylinderGeometry(7.5, 7.5, 0.5, 64);
+            const feature = new THREE.Mesh(featureGeo, new THREE.MeshStandardMaterial({ color: COL_IMPERIAL_RED }));
+            feature.position.set(0, mandalaY - 0.1, 0);
+            ceilingGroup.add(feature);
+
+            const artGeo = new THREE.CircleGeometry(7, 64);
+            const artMesh = new THREE.Mesh(artGeo, mandalaMat);
+            artMesh.rotation.x = Math.PI / 2; 
+            artMesh.rotation.z = Math.PI ; 
+            artMesh.position.set(0, mandalaY - 0.36, 0);
+            ceilingGroup.add(artMesh);
+
+            scene.add(ceilingGroup);
+        }
+
+        function buildColumns(goldMat) {
+            const colRadius = 1.0; 
+            const colHeight = ROOM_HEIGHT;
+            const colMat = new THREE.MeshStandardMaterial({ 
+                color: COL_IMPERIAL_RED, 
+                roughness: 0.15, 
+                metalness: 0.1 
+            });
+            
+            const colGeo = new THREE.CylinderGeometry(colRadius, colRadius, colHeight, 32);
+            const baseGeo = new THREE.CylinderGeometry(colRadius * 1.3, colRadius * 1.3, 1.2, 32);
+
+            const positions = [
+                {x: -20, z: -20}, 
+                {x: 20, z: -20},
+                {x: -20, z: 20}, 
+                {x: 20, z: 20}
+            ];
+
+            positions.forEach(pos => {
+                const col = new THREE.Mesh(colGeo, colMat);
+                col.position.set(pos.x, colHeight/2, pos.z);
+                col.castShadow = true;
+                scene.add(col);
+
+                const base = new THREE.Mesh(baseGeo, goldMat);
+                base.position.set(pos.x, 0.6, pos.z);
+                base.castShadow = true;
+                scene.add(base);
+
+                const top = new THREE.Mesh(baseGeo, goldMat);
+                top.position.set(pos.x, colHeight - 0.6, pos.z);
+                scene.add(top);
+
+                collidableObjects.push({
+                    type: 'cylinder',
+                    x: pos.x, z: pos.z, radius: colRadius * 1.3
+                });
+            });
+        }
+
+        function buildLighting() {
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambient);
+
+            const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x555555, 0.6); 
+            scene.add(hemiLight);
+
+            const mainLight = new THREE.PointLight(0xffaa55, 1.5, 80);
+            mainLight.position.set(0, 14, 0);
+            mainLight.castShadow = true;
+            mainLight.shadow.mapSize.width = 2048; 
+            mainLight.shadow.mapSize.height = 2048;
+            scene.add(mainLight);
+        }
+
+        function buildExhibitsAndArt(goldMat, spotlightGoldMat) {
+            const textureLoader = new THREE.TextureLoader(loadingManager);
+            textureLoader.setCrossOrigin('anonymous');
+
+            // --- 1. Logos ---
+            textureLoader.load(LOGO_URL, (tex) => {
+                const logoGeo = new THREE.PlaneGeometry(8, 8);
+                const logoMat = new THREE.MeshBasicMaterial({ 
+                    map: tex, 
+                    transparent: true, 
+                    opacity: 0.9,
+                    side: THREE.DoubleSide
+                });
+
+                const offsets = [
+                    { pos: new THREE.Vector3(0, 10, -ROOM_DEPTH/2 + 0.1), rot: new THREE.Vector3(0, 0, 0) }, 
+                    { pos: new THREE.Vector3(0, 10, ROOM_DEPTH/2 - 0.1), rot: new THREE.Vector3(0, Math.PI, 0) }, 
+                    { pos: new THREE.Vector3(ROOM_WIDTH/2 - 0.1, 10, 0), rot: new THREE.Vector3(0, -Math.PI/2, 0) }, 
+                    { pos: new THREE.Vector3(-ROOM_WIDTH/2 + 0.1, 10, 0), rot: new THREE.Vector3(0, Math.PI/2, 0) } 
+                ];
+
+                offsets.forEach(off => {
+                    const mesh = new THREE.Mesh(logoGeo, logoMat);
+                    mesh.position.copy(off.pos);
+                    mesh.rotation.set(off.rot.x, off.rot.y, off.rot.z);
+                    scene.add(mesh);
+                });
+            });
+
+            // --- 2. Central Exhibits ---
+            const pedestalGeo = new THREE.BoxGeometry(2, 1.2, 2);
+            const pedestalMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.2, metalness: 0.3 }); 
+            const pedBaseboardGeo = new THREE.BoxGeometry(2.2, 0.2, 2.2);
+            
+            const goldArtifactMat = new THREE.MeshPhysicalMaterial({ 
+                color: COL_GOLD, 
+                metalness: 0.7, 
+                roughness: 0.2,
+                emissive: 0x332200, 
+                emissiveIntensity: 0.5,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1
+            });
+
+            const exhibitConfs = [
+                { id: 'north', pos: new THREE.Vector3(0, 0, -15), shape: 'dodecahedron', wallNormal: new THREE.Vector3(0, 0, 1), paintings: [] }, 
+                { id: 'south', pos: new THREE.Vector3(0, 0, 15), shape: 'torus', wallNormal: new THREE.Vector3(0, 0, -1), paintings: [2, 3, 0] }, 
+                { id: 'east', pos: new THREE.Vector3(15, 0, 0), shape: 'icosahedron', wallNormal: new THREE.Vector3(-1, 0, 0), paintings: [4, 5, 1] }, 
+                { id: 'west', pos: new THREE.Vector3(-15, 0, 0), shape: 'octahedron', wallNormal: new THREE.Vector3(1, 0, 0), paintings: [6, 7, 8] }  
+            ];
+
+            exhibitConfs.forEach((conf) => {
+                // Pedestal
+                const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
+                pedestal.position.set(conf.pos.x, 0.6, conf.pos.z);
+                pedestal.castShadow = true;
+                pedestal.receiveShadow = true;
+                scene.add(pedestal);
+
+                // Pedestal Baseboard using spotlightGoldMat
+                const pedBaseboard = new THREE.Mesh(pedBaseboardGeo, spotlightGoldMat);
+                pedBaseboard.position.set(conf.pos.x, 0.1, conf.pos.z);
+                pedBaseboard.receiveShadow = true;
+                scene.add(pedBaseboard);
+                
+                collidableObjects.push({ type: 'box', x: conf.pos.x, z: conf.pos.z, size: 2.5 });
+
+                let artifactGeo;
+                if (conf.shape === 'dodecahedron') artifactGeo = new THREE.DodecahedronGeometry(0.7);
+                else if (conf.shape === 'torus') artifactGeo = new THREE.TorusGeometry(0.5, 0.2, 16, 100);
+                else if (conf.shape === 'icosahedron') artifactGeo = new THREE.IcosahedronGeometry(0.7);
+                else artifactGeo = new THREE.OctahedronGeometry(0.7);
+
+                const artifact = new THREE.Mesh(artifactGeo, goldArtifactMat);
+                artifact.position.set(conf.pos.x, 2.2, conf.pos.z);
+                artifact.castShadow = true;
+                scene.add(artifact);
+                rotatingArtifacts.push(artifact);
+
+                const artifactLight = new THREE.PointLight(0xffaa00, 2, 5);
+                artifactLight.position.set(conf.pos.x, 3.5, conf.pos.z);
+                scene.add(artifactLight);
+
+                const spotLight = new THREE.SpotLight(0xffffff, 8); 
+                spotLight.position.set(conf.pos.x, 10, conf.pos.z);
+                spotLight.angle = Math.PI / 6;
+                spotLight.penumbra = 0.3;
+                spotLight.decay = 1.5;
+                spotLight.distance = 50;
+                spotLight.target = artifact;
+                spotLight.castShadow = true;
+                scene.add(spotLight);
+                scene.add(spotLight.target);
+
+                if (conf.id === 'north') {
+                    const wallPos = conf.pos.clone().add(conf.wallNormal.clone().multiplyScalar(-10 + 0.1)); 
+                    wallPos.y = 5.0; 
+                    loadPainting(LONG_PAINTING_URL, wallPos, conf.wallNormal, 5.0, textureLoader); 
+                }
+
+                const height = 4.5;
+                const up = new THREE.Vector3(0, 1, 0);
+                const right = new THREE.Vector3().crossVectors(conf.wallNormal, up).normalize();
+
+                conf.paintings.forEach((pIndex, i) => {
+                    const pData = PAINTINGS[pIndex];
+                    let offset = 0;
+                    
+                    if (conf.paintings.length === 2) {
+                        offset = (i === 0 ? -1 : 1) * 8;
+                    } else if (conf.paintings.length === 3) {
+                        if (i === 0) offset = -12;
+                        if (i === 1) offset = 0;
+                        if (i === 2) offset = 12;
+                    }
+                    
+                    const wallPos = conf.pos.clone().add(conf.wallNormal.clone().multiplyScalar(-10 + 0.1)); 
+                    const paintPos = wallPos.clone().add(right.clone().multiplyScalar(offset));
+                    paintPos.y = height;
+
+                    loadPainting(pData.url, paintPos, conf.wallNormal, 3.5, textureLoader);
+                });
+            });
+        }
+
+        function loadPainting(url, position, normal, forcedHeight = 3.5, loader) {
+            const textureLoader = loader || new THREE.TextureLoader();
+            
+            textureLoader.load(url, (tex) => {
+                const aspect = tex.image.width / tex.image.height;
+                const baseHeight = forcedHeight;
+                const baseWidth = baseHeight * aspect;
+
+                const frameGeo = new THREE.BoxGeometry(baseWidth + 0.4, baseHeight + 0.4, 0.2);
+                const frameMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.6 });
+                const frame = new THREE.Mesh(frameGeo, frameMat);
+                
+                const canvasGeo = new THREE.PlaneGeometry(baseWidth, baseHeight);
+                const canvasMat = new THREE.MeshStandardMaterial({ 
+                    map: tex,
+                    roughness: 0.6,
+                    metalness: 0.1
+                });
+                const canvas = new THREE.Mesh(canvasGeo, canvasMat);
+                canvas.position.z = 0.11; 
+
+                frame.add(canvas);
+                
+                frame.position.copy(position);
+                frame.lookAt(frame.position.clone().add(normal));
+                
+                scene.add(frame);
+
+                const pLight = new THREE.PointLight(0xffffff, 0.4, 15); 
+                pLight.position.copy(position).add(normal.clone().multiplyScalar(2));
+                scene.add(pLight);
+            });
+        }
+
+        function checkCollision(nextPos) {
+            const halfW = ROOM_WIDTH / 2 - WALL_THICKNESS - 0.5;
+            const halfD = ROOM_DEPTH / 2 - WALL_THICKNESS - 0.5;
+
+            if (nextPos.x < -halfW || nextPos.x > halfW) return true;
+            if (nextPos.z < -halfD || nextPos.z > halfD) return true;
+
+            for (let obj of collidableObjects) {
+                if (obj.type === 'cylinder') {
+                    const dx = nextPos.x - obj.x;
+                    const dz = nextPos.z - obj.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    if (dist < (obj.radius + 0.5)) return true; 
+                } else if (obj.type === 'box') {
+                    const dx = nextPos.x - obj.x;
+                    const dz = nextPos.z - obj.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    if (dist < (obj.size/2 + 0.5)) return true;
+                }
+            }
+            return false;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now();
+            let delta = (time - prevTime) / 1000;
+            delta = Math.min(delta, 0.1);
+
+            if (controls.isLocked === true) {
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+                velocity.y -= GRAVITY * delta; 
+
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize(); 
+
+                let speed = isSprinting ? SPRINT_SPEED : PLAYER_SPEED;
+                if (isCrouching) speed = CROUCH_SPEED;
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * speed * 10.0 * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * speed * 10.0 * delta;
+
+                controls.moveRight(-velocity.x * delta);
+                controls.moveForward(-velocity.z * delta);
+                
+                controls.getObject().position.y += ( velocity.y * delta ); 
+
+                const targetHeight = isCrouching ? CROUCH_HEIGHT : STAND_HEIGHT;
+                
+                if ( controls.getObject().position.y < targetHeight ) {
+                    velocity.y = Math.max(0, velocity.y);
+                    controls.getObject().position.y = targetHeight;
+                    canJump = true;
+                }
+
+                const pos = controls.getObject().position;
+                if (checkCollision(pos)) {
+                    controls.moveRight(velocity.x * delta);
+                    controls.moveForward(velocity.z * delta);
+                    velocity.x = 0;
+                    velocity.z = 0;
+                }
+            }
+
+            rotatingArtifacts.forEach((art, idx) => {
+                art.rotation.x += 0.01 * (idx % 2 === 0 ? 1 : -1);
+                art.rotation.y += 0.02;
+            });
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+
+    </script>
+</body>
+</html>
