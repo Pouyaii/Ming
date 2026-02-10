@@ -240,6 +240,7 @@
         
         const collidableObjects = []; 
         const rotatingArtifacts = [];
+        let artifactSpinEnabled = false;
 
         init();
         animate();
@@ -311,6 +312,9 @@
                     case 'ShiftLeft':
                     case 'ShiftRight': isSprinting = true; break;
                     case 'ControlLeft': isCrouching = true; break;
+                    case 'KeyH':
+                        artifactSpinEnabled = !artifactSpinEnabled;
+                        break;
                 }
             };
 
@@ -784,6 +788,29 @@
                 west: '3D Models/Bowl 1.glb'
             };
 
+            const artifactTransformConfig = {
+                north: {
+                    // Statue: rotate 90° to stand upright.
+                    orientation: new THREE.Euler(Math.PI / 2, 0, 0),
+                    spinAxis: 'y'
+                },
+                south: {
+                    // Pot: rotate 90° to stand upright.
+                    orientation: new THREE.Euler(Math.PI / 2, 0, 0),
+                    spinAxis: 'y'
+                },
+                east: {
+                    // Golden: keep upright and spin on a horizontal axis.
+                    orientation: new THREE.Euler(0, 0, 0),
+                    spinAxis: 'x'
+                },
+                west: {
+                    // Bowl: keep upright and spin on a horizontal axis.
+                    orientation: new THREE.Euler(0, 0, 0),
+                    spinAxis: 'x'
+                }
+            };
+
             const alignArtifactToPedestal = (object, targetPosition, targetHeight = 1.2, pedestalTopY = 2.2) => {
                 const box = new THREE.Box3().setFromObject(object);
                 const size = new THREE.Vector3();
@@ -831,6 +858,7 @@
                 if (glbFile) {
                     gltfLoader.load(glbFile, (gltf) => {
                         const artifact = gltf.scene;
+                        const transform = artifactTransformConfig[conf.id] || { orientation: new THREE.Euler(0, 0, 0), spinAxis: 'y' };
                         artifact.traverse((child) => {
                             if (child.isMesh) {
                                 child.castShadow = true;
@@ -843,14 +871,21 @@
                         alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
                         const lookTarget = new THREE.Vector3(0, artifact.position.y, 0);
                         artifact.lookAt(lookTarget);
-                        artifact.rotateX(Math.PI / 2);
+                        artifact.rotation.x += transform.orientation.x;
+                        artifact.rotation.y += transform.orientation.y;
+                        artifact.rotation.z += transform.orientation.z;
                         alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
-                        artifact.userData.baseRotationY = artifact.rotation.y;
+                        artifact.userData.baseRotation = {
+                            x: artifact.rotation.x,
+                            y: artifact.rotation.y,
+                            z: artifact.rotation.z
+                        };
                         artifactTarget.position.copy(artifact.position);
                         scene.add(artifact);
                         rotatingArtifacts.push({
                             mesh: artifact,
-                            baseRotationY: artifact.userData.baseRotationY,
+                            baseRotation: artifact.userData.baseRotation,
+                            axis: transform.spinAxis,
                             speed: 0.2
                         });
                     });
@@ -864,14 +899,16 @@
                 fillLight.position.set(conf.pos.x + 1.5, 2.8, conf.pos.z + 1.5);
                 scene.add(fillLight);
 
-                const spotLight = new THREE.SpotLight(0xffffff, 9); 
-                spotLight.position.set(conf.pos.x, 10, conf.pos.z);
-                spotLight.angle = Math.PI / 6;
-                spotLight.penumbra = 0.3;
-                spotLight.decay = 1.5;
-                spotLight.distance = 50;
+                const spotLight = new THREE.SpotLight(0xfff4d0, 16);
+                spotLight.position.set(conf.pos.x + 1.2, 8.5, conf.pos.z + 1.2);
+                spotLight.angle = Math.PI / 7;
+                spotLight.penumbra = 0.45;
+                spotLight.decay = 1.2;
+                spotLight.distance = 24;
                 spotLight.target = artifactTarget;
                 spotLight.castShadow = true;
+                spotLight.shadow.mapSize.width = 1024;
+                spotLight.shadow.mapSize.height = 1024;
                 scene.add(spotLight);
                 scene.add(spotLight.target);
 
@@ -1013,13 +1050,24 @@
                 }
             }
 
-            const rotationTime = performance.now() * 0.001;
-            rotatingArtifacts.forEach((entry, idx) => {
-                const mesh = entry.mesh || entry;
-                const baseRotationY = entry.baseRotationY ?? mesh.userData.baseRotationY ?? mesh.rotation.y;
-                const speed = entry.speed ?? 0.15 + (idx % 2) * 0.05;
-                mesh.rotation.y = baseRotationY + rotationTime * speed;
-            });
+            if (artifactSpinEnabled) {
+                const rotationTime = performance.now() * 0.001;
+                rotatingArtifacts.forEach((entry, idx) => {
+                    const mesh = entry.mesh || entry;
+                    const axis = entry.axis ?? 'y';
+                    const baseRotation = entry.baseRotation ?? mesh.userData.baseRotation ?? {
+                        x: mesh.rotation.x,
+                        y: mesh.rotation.y,
+                        z: mesh.rotation.z
+                    };
+                    const speed = entry.speed ?? 0.15 + (idx % 2) * 0.05;
+
+                    mesh.rotation.x = baseRotation.x;
+                    mesh.rotation.y = baseRotation.y;
+                    mesh.rotation.z = baseRotation.z;
+                    mesh.rotation[axis] = baseRotation[axis] + rotationTime * speed;
+                });
+            }
 
             prevTime = time;
             renderer.render(scene, camera);
