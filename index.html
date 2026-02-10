@@ -169,6 +169,7 @@
         <div class="dev-row"><label for="dev-pos-z">Z</label><input id="dev-pos-z" type="number" step="0.01"></div>
 
         <div class="group-title">Scale</div>
+        <div class="dev-row"><label for="dev-scale-uniform">Uniform</label><input id="dev-scale-uniform" type="checkbox" checked></div>
         <div class="dev-row"><label for="dev-scale-x">X</label><input id="dev-scale-x" type="number" step="0.01" min="0.01"></div>
         <div class="dev-row"><label for="dev-scale-y">Y</label><input id="dev-scale-y" type="number" step="0.01" min="0.01"></div>
         <div class="dev-row"><label for="dev-scale-z">Z</label><input id="dev-scale-z" type="number" step="0.01" min="0.01"></div>
@@ -260,7 +261,7 @@
             onPointerlockError() {
                 console.warn( 'PointerLockControls: Unable to use Pointer Lock API' );
             }
-            
+
             getObject() { return this.camera; }
             moveRight( distance ) {
                 _vector.setFromMatrixColumn( this.camera.matrix, 0 );
@@ -278,27 +279,27 @@
         const ROOM_DEPTH = 50;
         const ROOM_HEIGHT = 16;
         const WALL_THICKNESS = 1;
-        
+
         // Physics
         const STAND_HEIGHT = 1.7;
         const CROUCH_HEIGHT = 1.0;
         const PLAYER_SPEED = 10.0;
-        const SPRINT_SPEED = 18.0; 
+        const SPRINT_SPEED = 18.0;
         const CROUCH_SPEED = 4.0;
-        const GRAVITY = 300.0; 
-        const JUMP_FORCE = 25.0; 
-        
+        const GRAVITY = 300.0;
+        const JUMP_FORCE = 37.5;
+
         // Colors
-        const COL_IMPERIAL_RED = 0x9B1B30; 
+        const COL_IMPERIAL_RED = 0x9B1B30;
         const COL_GOLD = 0xFFD840; // Vibrant Ming Gold
         const COL_MING_BLUE = 0x102E4A; // Lapiz/Cobalt
         const COL_DARK_WOOD = 0x3F2A14;
-        const COL_WALL = 0xAA3333; 
+        const COL_WALL = 0xAA3333;
 
         // Assets
         const LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Ming_dynasty_%28Chinese_characters%29.svg/2560px-Ming_dynasty_%28Chinese_characters%29.svg.png';
         const LONG_PAINTING_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/%E5%8D%97%E9%83%BD%E7%B9%81%E6%9C%83%E5%9C%96_01.jpg/2560px-%E5%8D%97%E9%83%BD%E7%B9%81%E6%9C%83%E5%9C%96_01.jpg';
-        
+
         const PAINTINGS = [
             { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/A_Seated_Portrait_of_Ming_Emperor_Taizu.jpg/960px-A_Seated_Portrait_of_Ming_Emperor_Taizu.jpg', title: 'Emperor Taizu' },
             { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Ch%27iu_Ying_001.jpg/1280px-Ch%27iu_Ying_001.jpg', title: 'Chiu Ying' },
@@ -325,8 +326,8 @@
         const velocity = new THREE.Vector3();
         const direction = new THREE.Vector3();
         let loadingManager;
-        
-        const collidableObjects = []; 
+
+        const collidableObjects = [];
         const rotatingArtifacts = [];
         let artifactSpinEnabled = false;
         const artifactRegistry = {};
@@ -336,6 +337,30 @@
             isUpdatingInputs: false
         };
         let devToolkitEl;
+        let suppressInstructionsOverlay = false;
+
+        const defaultArtifactValues = {
+            north: {
+                positionY: 2.2,
+                scale: 1.3,
+                rotation: { x: 0, y: 0, z: 0 }
+            },
+            south: {
+                positionY: 2.19,
+                scale: 3,
+                rotation: { x: 3.142, y: 0, z: 0 }
+            },
+            east: {
+                positionY: 1.95,
+                scale: 1.5,
+                rotation: { x: 0, y: 0, z: 0 }
+            },
+            west: {
+                positionY: 1.89,
+                scale: 2,
+                rotation: { x: 0, y: 0, z: 0 }
+            }
+        };
 
         init();
         animate();
@@ -372,26 +397,42 @@
             initDevToolkit();
 
             const instructions = document.getElementById('instructions');
+            const setInstructionVisibility = (show) => {
+                instructions.style.display = show ? 'flex' : 'none';
+            };
             instructions.addEventListener('click', function () {
-                window.focus(); 
+                suppressInstructionsOverlay = false;
+                window.focus();
                 controls.lock();
             });
-            
+
             document.addEventListener('pointerlockerror', (event) => {
-                instructions.style.display = 'flex';
+                if (!suppressInstructionsOverlay) {
+                    setInstructionVisibility(true);
+                }
             });
 
             controls.addEventListener('lock', function () {
-                instructions.style.display = 'none';
+                setInstructionVisibility(false);
             });
 
             controls.addEventListener('unlock', function () {
-                instructions.style.display = 'flex';
+                if (!suppressInstructionsOverlay) {
+                    setInstructionVisibility(true);
+                }
             });
 
             scene.add(controls.getObject());
 
             const onKeyDown = function (event) {
+                const movementKeys = ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ControlLeft', 'ShiftLeft', 'ShiftRight'];
+                if ((controls.isLocked || devToolkitState.isVisible) && movementKeys.includes(event.code)) {
+                    event.preventDefault();
+                }
+                if (event.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) {
+                    event.preventDefault();
+                }
+
                 switch (event.code) {
                     case 'ArrowUp':
                     case 'KeyW': moveForward = true; break;
@@ -401,7 +442,7 @@
                     case 'KeyS': moveBackward = true; break;
                     case 'ArrowRight':
                     case 'KeyD': moveRight = true; break;
-                    case 'Space': 
+                    case 'Space':
                         if (canJump === true) velocity.y += JUMP_FORCE;
                         canJump = false;
                         break;
@@ -418,6 +459,9 @@
             };
 
             const onKeyUp = function (event) {
+                if ((controls.isLocked || devToolkitState.isVisible) && ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ControlLeft', 'ShiftLeft', 'ShiftRight'].includes(event.code)) {
+                    event.preventDefault();
+                }
                 switch (event.code) {
                     case 'ArrowUp':
                     case 'KeyW': moveForward = false; break;
@@ -465,7 +509,7 @@
             ctx.stroke();
 
             // Inner Ming Blue Ring (Texture Ring)
-            ctx.strokeStyle = '#102E4A'; 
+            ctx.strokeStyle = '#102E4A';
             ctx.lineWidth = 40;
             ctx.beginPath();
             ctx.arc(cx, cy, 350, 0, Math.PI * 2);
@@ -498,7 +542,7 @@
                 tCanvas.width = img.width;
                 tCanvas.height = img.height;
                 const tCtx = tCanvas.getContext('2d');
-                
+
                 tCtx.drawImage(img, 0, 0);
                 tCtx.globalCompositeOperation = 'source-in';
                 tCtx.fillStyle = '#9B1B30'; // Imperial Red for Logo
@@ -520,7 +564,7 @@
             canvas.height = 1024;
             const ctx = canvas.getContext('2d');
 
-            ctx.fillStyle = '#4a0404'; 
+            ctx.fillStyle = '#4a0404';
             ctx.fillRect(0, 0, 1024, 1024);
 
             for (let i = 0; i < 50000; i++) {
@@ -533,7 +577,7 @@
 
             const brickW = 200;
             const brickH = 50;
-            ctx.strokeStyle = '#220000'; 
+            ctx.strokeStyle = '#220000';
             ctx.lineWidth = 3;
 
             for (let y = 0; y < 1024; y += brickH) {
@@ -565,7 +609,7 @@
             }
 
             ctx.strokeStyle = '#555555';
-            ctx.lineWidth = 12; 
+            ctx.lineWidth = 12;
             ctx.strokeRect(0, 0, 512, 512);
 
             const tex = new THREE.CanvasTexture(canvas);
@@ -579,7 +623,7 @@
         function buildRoom() {
             const bloodwoodTex = createBloodwoodTexture();
             const ceramicTex = createCeramicTexture();
-            
+
             const ceramicTexH = ceramicTex.clone();
             ceramicTexH.repeat.set(10, 2);
             ceramicTexH.needsUpdate = true;
@@ -588,37 +632,37 @@
             ceramicTexV.repeat.set(2, 7);
             ceramicTexV.needsUpdate = true;
 
-            const woodFloorMat = new THREE.MeshStandardMaterial({ 
+            const woodFloorMat = new THREE.MeshStandardMaterial({
                 map: bloodwoodTex,
-                roughness: 0.35, 
+                roughness: 0.35,
                 metalness: 0.1,
-                color: 0xaa8888 
+                color: 0xaa8888
             });
-            
-            const ceramicMatH = new THREE.MeshStandardMaterial({ 
+
+            const ceramicMatH = new THREE.MeshStandardMaterial({
                 map: ceramicTexH,
-                roughness: 0.1, 
+                roughness: 0.1,
                 metalness: 0.2,
-                color: 0xaaaaaa 
+                color: 0xaaaaaa
             });
 
-            const ceramicMatV = new THREE.MeshStandardMaterial({ 
+            const ceramicMatV = new THREE.MeshStandardMaterial({
                 map: ceramicTexV,
-                roughness: 0.1, 
+                roughness: 0.1,
                 metalness: 0.2,
-                color: 0xaaaaaa 
+                color: 0xaaaaaa
             });
 
-            const wallMat = new THREE.MeshStandardMaterial({ 
-                color: COL_WALL, 
-                roughness: 0.8 
+            const wallMat = new THREE.MeshStandardMaterial({
+                color: COL_WALL,
+                roughness: 0.8
             });
-            
+
             // Vibrant Ming Gold Material (General)
             const goldMat = new THREE.MeshStandardMaterial({
-                color: 0xFFD700, 
+                color: 0xFFD700,
                 roughness: 0.3,
-                metalness: 0.4,  
+                metalness: 0.4,
                 emissive: 0xaa8800,
                 emissiveIntensity: 0.2
             });
@@ -678,9 +722,9 @@
             northWall.position.set(0, ROOM_HEIGHT/2, -ROOM_DEPTH/2 - WALL_THICKNESS/2);
             northWall.receiveShadow = true;
             scene.add(northWall);
-            collidableObjects.push({ 
-                min: { x: -ROOM_WIDTH/2, z: -ROOM_DEPTH/2 }, 
-                max: { x: ROOM_WIDTH/2, z: -ROOM_DEPTH/2 + WALL_THICKNESS } 
+            collidableObjects.push({
+                min: { x: -ROOM_WIDTH/2, z: -ROOM_DEPTH/2 },
+                max: { x: ROOM_WIDTH/2, z: -ROOM_DEPTH/2 + WALL_THICKNESS }
             });
 
             const southWall = new THREE.Mesh(wallH, wallMat);
@@ -700,7 +744,7 @@
 
             // Baseboards
             const bbHeight = 0.8;
-            const bbDepth = 0.3; 
+            const bbDepth = 0.3;
             const bbGeoH = new THREE.BoxGeometry(ROOM_WIDTH - 0.1, bbHeight, bbDepth);
             const bbGeoV = new THREE.BoxGeometry(bbDepth, bbHeight, ROOM_DEPTH - 0.1);
 
@@ -727,18 +771,18 @@
 
         function buildCeiling() {
             const ceilingGroup = new THREE.Group();
-            
+
             const mainMat = new THREE.MeshStandardMaterial({ color: 0x221100, roughness: 0.9 });
             const backingGeo = new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH);
             const backing = new THREE.Mesh(backingGeo, mainMat);
             backing.rotation.x = Math.PI / 2;
-            backing.position.y = ROOM_HEIGHT + 1.0; 
+            backing.position.y = ROOM_HEIGHT + 1.0;
             ceilingGroup.add(backing);
 
             const beamMat = new THREE.MeshStandardMaterial({ color: COL_DARK_WOOD, roughness: 0.6 });
             const beamThickness = 0.8;
             const beamDepth = 0.8;
-            
+
             for (let z = -ROOM_DEPTH/2 + 5; z < ROOM_DEPTH/2; z += 5) {
                 const beamGeo = new THREE.BoxGeometry(ROOM_WIDTH, beamDepth, beamThickness);
                 const beam = new THREE.Mesh(beamGeo, beamMat);
@@ -754,17 +798,17 @@
             }
 
             const mandalaTexture = createMandalaTexture();
-            const mandalaMat = new THREE.MeshStandardMaterial({ 
+            const mandalaMat = new THREE.MeshStandardMaterial({
                 map: mandalaTexture,
                 roughness: 0.3,
                 metalness: 0.4,
                 side: THREE.FrontSide
             });
-            
+
             const mandalaY = ROOM_HEIGHT - 0.5;
             const mandalaGeo = new THREE.CylinderGeometry(8, 8, 0.4, 32);
             const mandala = new THREE.Mesh(mandalaGeo, beamMat);
-            mandala.position.set(0, mandalaY, 0); 
+            mandala.position.set(0, mandalaY, 0);
             ceilingGroup.add(mandala);
 
             const featureGeo = new THREE.CylinderGeometry(7.5, 7.5, 0.5, 64);
@@ -774,8 +818,8 @@
 
             const artGeo = new THREE.CircleGeometry(7, 64);
             const artMesh = new THREE.Mesh(artGeo, mandalaMat);
-            artMesh.rotation.x = Math.PI / 2; 
-            artMesh.rotation.z = Math.PI ; 
+            artMesh.rotation.x = Math.PI / 2;
+            artMesh.rotation.z = Math.PI ;
             artMesh.position.set(0, mandalaY - 0.36, 0);
             ceilingGroup.add(artMesh);
 
@@ -783,21 +827,21 @@
         }
 
         function buildColumns(goldMat) {
-            const colRadius = 1.0; 
+            const colRadius = 1.0;
             const colHeight = ROOM_HEIGHT;
-            const colMat = new THREE.MeshStandardMaterial({ 
-                color: COL_IMPERIAL_RED, 
-                roughness: 0.15, 
-                metalness: 0.1 
+            const colMat = new THREE.MeshStandardMaterial({
+                color: COL_IMPERIAL_RED,
+                roughness: 0.15,
+                metalness: 0.1
             });
-            
+
             const colGeo = new THREE.CylinderGeometry(colRadius, colRadius, colHeight, 32);
             const baseGeo = new THREE.CylinderGeometry(colRadius * 1.3, colRadius * 1.3, 1.2, 32);
 
             const positions = [
-                {x: -20, z: -20}, 
+                {x: -20, z: -20},
                 {x: 20, z: -20},
-                {x: -20, z: 20}, 
+                {x: -20, z: 20},
                 {x: 20, z: 20}
             ];
 
@@ -827,13 +871,13 @@
             const ambient = new THREE.AmbientLight(0xffffff, 0.9);
             scene.add(ambient);
 
-            const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x555555, 0.7); 
+            const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x555555, 0.7);
             scene.add(hemiLight);
 
             const mainLight = new THREE.PointLight(0xffaa55, 1.8, 90);
-            mainLight.position.set(0, 14, 0);
+            mainLight.position.set(0, 17.5, 0);
             mainLight.castShadow = true;
-            mainLight.shadow.mapSize.width = 2048; 
+            mainLight.shadow.mapSize.width = 2048;
             mainLight.shadow.mapSize.height = 2048;
             scene.add(mainLight);
         }
@@ -855,7 +899,31 @@
             inputIds.forEach((id) => {
                 const input = document.getElementById(id);
                 input.addEventListener('input', applyToolkitValuesToSelectedArtifact);
+                input.addEventListener('wheel', onDevInputWheelChange, { passive: false });
             });
+
+            const uniformScaleCheckbox = document.getElementById('dev-scale-uniform');
+            uniformScaleCheckbox.addEventListener('change', () => {
+                if (!uniformScaleCheckbox.checked) return;
+                const xValue = document.getElementById('dev-scale-x').value;
+                document.getElementById('dev-scale-y').value = xValue;
+                document.getElementById('dev-scale-z').value = xValue;
+                applyToolkitValuesToSelectedArtifact();
+            });
+        }
+
+        function onDevInputWheelChange(event) {
+            event.preventDefault();
+            const input = event.currentTarget;
+            const step = Number.parseFloat(input.step) || 0.01;
+            const multiplier = event.shiftKey ? 10 : 1;
+            const direction = event.deltaY > 0 ? -1 : 1;
+            const min = input.min !== '' ? Number.parseFloat(input.min) : -Infinity;
+            const max = input.max !== '' ? Number.parseFloat(input.max) : Infinity;
+            const current = Number.parseFloat(input.value || '0');
+            const nextValue = Math.min(max, Math.max(min, current + (step * multiplier * direction)));
+            input.value = nextValue.toFixed(3);
+            applyToolkitValuesToSelectedArtifact();
         }
 
         function toggleDevToolkit() {
@@ -864,12 +932,19 @@
             devToolkitEl.style.display = devToolkitState.isVisible ? 'block' : 'none';
 
             if (devToolkitState.isVisible) {
+                suppressInstructionsOverlay = true;
                 controls.unlock();
+                document.getElementById('instructions').style.display = 'none';
                 moveForward = false;
                 moveBackward = false;
                 moveLeft = false;
                 moveRight = false;
                 syncInputsFromSelectedArtifact();
+            } else {
+                suppressInstructionsOverlay = false;
+                if (!controls.isLocked) {
+                    document.getElementById('instructions').style.display = 'flex';
+                }
             }
         }
 
@@ -896,6 +971,7 @@
             if (devToolkitState.isUpdatingInputs) return;
             const artifact = artifactRegistry[devToolkitState.selectedId];
             if (!artifact) return;
+            const isUniformScale = document.getElementById('dev-scale-uniform').checked;
 
             const read = (id, fallback) => {
                 const value = Number.parseFloat(document.getElementById(id).value);
@@ -908,11 +984,18 @@
                 read('dev-pos-z', artifact.position.z)
             );
 
-            artifact.scale.set(
-                Math.max(0.01, read('dev-scale-x', artifact.scale.x)),
-                Math.max(0.01, read('dev-scale-y', artifact.scale.y)),
-                Math.max(0.01, read('dev-scale-z', artifact.scale.z))
-            );
+            const scaleX = Math.max(0.01, read('dev-scale-x', artifact.scale.x));
+            const scaleY = Math.max(0.01, read('dev-scale-y', artifact.scale.y));
+            const scaleZ = Math.max(0.01, read('dev-scale-z', artifact.scale.z));
+            if (isUniformScale) {
+                artifact.scale.set(scaleX, scaleX, scaleX);
+                devToolkitState.isUpdatingInputs = true;
+                document.getElementById('dev-scale-y').value = scaleX.toFixed(3);
+                document.getElementById('dev-scale-z').value = scaleX.toFixed(3);
+                devToolkitState.isUpdatingInputs = false;
+            } else {
+                artifact.scale.set(scaleX, scaleY, scaleZ);
+            }
 
             artifact.rotation.set(
                 read('dev-rot-x', artifact.rotation.x),
@@ -940,18 +1023,18 @@
             // --- 1. Logos ---
             textureLoader.load(LOGO_URL, (tex) => {
                 const logoGeo = new THREE.PlaneGeometry(8, 8);
-                const logoMat = new THREE.MeshBasicMaterial({ 
-                    map: tex, 
-                    transparent: true, 
+                const logoMat = new THREE.MeshBasicMaterial({
+                    map: tex,
+                    transparent: true,
                     opacity: 0.9,
                     side: THREE.DoubleSide
                 });
 
                 const offsets = [
-                    { pos: new THREE.Vector3(0, 10, -ROOM_DEPTH/2 + 0.1), rot: new THREE.Vector3(0, 0, 0) }, 
-                    { pos: new THREE.Vector3(0, 10, ROOM_DEPTH/2 - 0.1), rot: new THREE.Vector3(0, Math.PI, 0) }, 
-                    { pos: new THREE.Vector3(ROOM_WIDTH/2 - 0.1, 10, 0), rot: new THREE.Vector3(0, -Math.PI/2, 0) }, 
-                    { pos: new THREE.Vector3(-ROOM_WIDTH/2 + 0.1, 10, 0), rot: new THREE.Vector3(0, Math.PI/2, 0) } 
+                    { pos: new THREE.Vector3(0, 10, -ROOM_DEPTH/2 + 0.1), rot: new THREE.Vector3(0, 0, 0) },
+                    { pos: new THREE.Vector3(0, 10, ROOM_DEPTH/2 - 0.1), rot: new THREE.Vector3(0, Math.PI, 0) },
+                    { pos: new THREE.Vector3(ROOM_WIDTH/2 - 0.1, 10, 0), rot: new THREE.Vector3(0, -Math.PI/2, 0) },
+                    { pos: new THREE.Vector3(-ROOM_WIDTH/2 + 0.1, 10, 0), rot: new THREE.Vector3(0, Math.PI/2, 0) }
                 ];
 
                 offsets.forEach(off => {
@@ -964,14 +1047,14 @@
 
             // --- 2. Central Exhibits ---
             const pedestalGeo = new THREE.BoxGeometry(2, 1.2, 2);
-            const pedestalMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.2, metalness: 0.3 }); 
+            const pedestalMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.2, metalness: 0.3 });
             const pedBaseboardGeo = new THREE.BoxGeometry(2.2, 0.2, 2.2);
-            
+
             const exhibitConfs = [
-                { id: 'north', pos: new THREE.Vector3(0, 0, -15), shape: 'dodecahedron', wallNormal: new THREE.Vector3(0, 0, 1), paintings: [] }, 
-                { id: 'south', pos: new THREE.Vector3(0, 0, 15), shape: 'torus', wallNormal: new THREE.Vector3(0, 0, -1), paintings: [2, 3, 0] }, 
-                { id: 'east', pos: new THREE.Vector3(15, 0, 0), shape: 'icosahedron', wallNormal: new THREE.Vector3(-1, 0, 0), paintings: [4, 5, 1] }, 
-                { id: 'west', pos: new THREE.Vector3(-15, 0, 0), shape: 'octahedron', wallNormal: new THREE.Vector3(1, 0, 0), paintings: [6, 7, 8] }  
+                { id: 'north', pos: new THREE.Vector3(0, 0, -15), shape: 'dodecahedron', wallNormal: new THREE.Vector3(0, 0, 1), paintings: [] },
+                { id: 'south', pos: new THREE.Vector3(0, 0, 15), shape: 'torus', wallNormal: new THREE.Vector3(0, 0, -1), paintings: [2, 3, 0] },
+                { id: 'east', pos: new THREE.Vector3(15, 0, 0), shape: 'icosahedron', wallNormal: new THREE.Vector3(-1, 0, 0), paintings: [4, 5, 1] },
+                { id: 'west', pos: new THREE.Vector3(-15, 0, 0), shape: 'octahedron', wallNormal: new THREE.Vector3(1, 0, 0), paintings: [6, 7, 8] }
             ];
 
             const glbFiles = {
@@ -983,23 +1066,15 @@
 
             const artifactTransformConfig = {
                 north: {
-                    // Statue: rotate 90° to stand upright.
-                    orientation: new THREE.Euler(Math.PI / 2, 0, 0),
                     spinAxis: 'y'
                 },
                 south: {
-                    // Pot: rotate 90° to stand upright.
-                    orientation: new THREE.Euler(Math.PI / 2, 0, 0),
                     spinAxis: 'y'
                 },
                 east: {
-                    // Golden: keep upright and spin on a horizontal axis.
-                    orientation: new THREE.Euler(0, 0, 0),
                     spinAxis: 'x'
                 },
                 west: {
-                    // Bowl: keep upright and spin on a horizontal axis.
-                    orientation: new THREE.Euler(0, 0, 0),
                     spinAxis: 'x'
                 }
             };
@@ -1040,7 +1115,7 @@
                 pedBaseboard.position.set(conf.pos.x, 0.1, conf.pos.z);
                 pedBaseboard.receiveShadow = true;
                 scene.add(pedBaseboard);
-                
+
                 collidableObjects.push({ type: 'box', x: conf.pos.x, z: conf.pos.z, size: 2.5 });
 
                 const artifactTarget = new THREE.Object3D();
@@ -1051,7 +1126,8 @@
                 if (glbFile) {
                     gltfLoader.load(glbFile, (gltf) => {
                         const artifact = gltf.scene;
-                        const transform = artifactTransformConfig[conf.id] || { orientation: new THREE.Euler(0, 0, 0), spinAxis: 'y' };
+                        const transform = artifactTransformConfig[conf.id] || { spinAxis: 'y' };
+                        const defaultValues = defaultArtifactValues[conf.id] || defaultArtifactValues.north;
                         artifact.traverse((child) => {
                             if (child.isMesh) {
                                 child.castShadow = true;
@@ -1062,12 +1138,13 @@
                             }
                         });
                         alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
-                        const lookTarget = new THREE.Vector3(0, artifact.position.y, 0);
-                        artifact.lookAt(lookTarget);
-                        artifact.rotation.x += transform.orientation.x;
-                        artifact.rotation.y += transform.orientation.y;
-                        artifact.rotation.z += transform.orientation.z;
-                        alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
+                        artifact.scale.setScalar(defaultValues.scale);
+                        artifact.position.set(conf.pos.x, defaultValues.positionY, conf.pos.z);
+                        artifact.rotation.set(
+                            defaultValues.rotation.x,
+                            defaultValues.rotation.y,
+                            defaultValues.rotation.z
+                        );
                         artifact.userData.baseRotation = {
                             x: artifact.rotation.x,
                             y: artifact.rotation.y,
@@ -1111,10 +1188,33 @@
                 scene.add(spotLight);
                 scene.add(spotLight.target);
 
+                const sideLightDistance = 4.5;
+                const sideLightHeight = 2.6;
+                const sideLightOffsets = [
+                    new THREE.Vector3(sideLightDistance, sideLightHeight, 0),
+                    new THREE.Vector3(-sideLightDistance, sideLightHeight, 0),
+                    new THREE.Vector3(0, sideLightHeight, sideLightDistance),
+                    new THREE.Vector3(0, sideLightHeight, -sideLightDistance)
+                ];
+
+                sideLightOffsets.forEach((offset) => {
+                    const sideSpot = new THREE.SpotLight(0xfff0dc, 7.5);
+                    sideSpot.position.set(conf.pos.x + offset.x, offset.y, conf.pos.z + offset.z);
+                    sideSpot.angle = Math.PI / 8;
+                    sideSpot.penumbra = 0.35;
+                    sideSpot.decay = 1.1;
+                    sideSpot.distance = 16;
+                    const sideTarget = new THREE.Object3D();
+                    sideTarget.position.set(conf.pos.x + (offset.x * 0.2), 2.2, conf.pos.z + (offset.z * 0.2));
+                    sideSpot.target = sideTarget;
+                    scene.add(sideSpot);
+                    scene.add(sideTarget);
+                });
+
                 if (conf.id === 'north') {
-                    const wallPos = conf.pos.clone().add(conf.wallNormal.clone().multiplyScalar(-10 + 0.1)); 
-                    wallPos.y = 5.0; 
-                    loadPainting(LONG_PAINTING_URL, wallPos, conf.wallNormal, 5.0, textureLoader); 
+                    const wallPos = conf.pos.clone().add(conf.wallNormal.clone().multiplyScalar(-10 + 0.1));
+                    wallPos.y = 5.0;
+                    loadPainting(LONG_PAINTING_URL, wallPos, conf.wallNormal, 5.0, textureLoader);
                 }
 
                 const height = 4.5;
@@ -1124,7 +1224,7 @@
                 conf.paintings.forEach((pIndex, i) => {
                     const pData = PAINTINGS[pIndex];
                     let offset = 0;
-                    
+
                     if (conf.paintings.length === 2) {
                         offset = (i === 0 ? -1 : 1) * 8;
                     } else if (conf.paintings.length === 3) {
@@ -1132,8 +1232,8 @@
                         if (i === 1) offset = 0;
                         if (i === 2) offset = 12;
                     }
-                    
-                    const wallPos = conf.pos.clone().add(conf.wallNormal.clone().multiplyScalar(-10 + 0.1)); 
+
+                    const wallPos = conf.pos.clone().add(conf.wallNormal.clone().multiplyScalar(-10 + 0.1));
                     const paintPos = wallPos.clone().add(right.clone().multiplyScalar(offset));
                     paintPos.y = height;
 
@@ -1144,7 +1244,7 @@
 
         function loadPainting(url, position, normal, forcedHeight = 3.5, loader) {
             const textureLoader = loader || new THREE.TextureLoader();
-            
+
             textureLoader.load(url, (tex) => {
                 const aspect = tex.image.width / tex.image.height;
                 const baseHeight = forcedHeight;
@@ -1153,24 +1253,24 @@
                 const frameGeo = new THREE.BoxGeometry(baseWidth + 0.4, baseHeight + 0.4, 0.2);
                 const frameMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.6 });
                 const frame = new THREE.Mesh(frameGeo, frameMat);
-                
+
                 const canvasGeo = new THREE.PlaneGeometry(baseWidth, baseHeight);
-                const canvasMat = new THREE.MeshStandardMaterial({ 
+                const canvasMat = new THREE.MeshStandardMaterial({
                     map: tex,
                     roughness: 0.6,
                     metalness: 0.1
                 });
                 const canvas = new THREE.Mesh(canvasGeo, canvasMat);
-                canvas.position.z = 0.11; 
+                canvas.position.z = 0.11;
 
                 frame.add(canvas);
-                
+
                 frame.position.copy(position);
                 frame.lookAt(frame.position.clone().add(normal));
-                
+
                 scene.add(frame);
 
-                const pLight = new THREE.PointLight(0xffffff, 0.4, 15); 
+                const pLight = new THREE.PointLight(0xffffff, 0.4, 15);
                 pLight.position.copy(position).add(normal.clone().multiplyScalar(2));
                 scene.add(pLight);
             });
@@ -1188,7 +1288,7 @@
                     const dx = nextPos.x - obj.x;
                     const dz = nextPos.z - obj.z;
                     const dist = Math.sqrt(dx*dx + dz*dz);
-                    if (dist < (obj.radius + 0.5)) return true; 
+                    if (dist < (obj.radius + 0.5)) return true;
                 } else if (obj.type === 'box') {
                     const dx = nextPos.x - obj.x;
                     const dz = nextPos.z - obj.z;
@@ -1215,11 +1315,11 @@
             if (controls.isLocked === true) {
                 velocity.x -= velocity.x * 10.0 * delta;
                 velocity.z -= velocity.z * 10.0 * delta;
-                velocity.y -= GRAVITY * delta; 
+                velocity.y -= GRAVITY * delta;
 
                 direction.z = Number(moveForward) - Number(moveBackward);
                 direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize(); 
+                direction.normalize();
 
                 let speed = isSprinting ? SPRINT_SPEED : PLAYER_SPEED;
                 if (isCrouching) speed = CROUCH_SPEED;
@@ -1229,11 +1329,11 @@
 
                 controls.moveRight(-velocity.x * delta);
                 controls.moveForward(-velocity.z * delta);
-                
-                controls.getObject().position.y += ( velocity.y * delta ); 
+
+                controls.getObject().position.y += ( velocity.y * delta );
 
                 const targetHeight = isCrouching ? CROUCH_HEIGHT : STAND_HEIGHT;
-                
+
                 if ( controls.getObject().position.y < targetHeight ) {
                     velocity.y = Math.max(0, velocity.y);
                     controls.getObject().position.y = targetHeight;
