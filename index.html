@@ -11,6 +11,7 @@
             overflow: hidden;
             font-family: 'Times New Roman', serif;
             background-color: #000;
+            touch-action: none;
         }
         #instructions {
             position: absolute;
@@ -28,6 +29,8 @@
             text-align: center;
             cursor: pointer;
             transition: opacity 0.5s;
+            padding: 16px;
+            box-sizing: border-box;
         }
         #program-logo {
             width: 120px;
@@ -54,6 +57,71 @@
             border: 1px solid #444;
             padding: 15px;
             border-radius: 5px;
+        }
+        #touch-ui {
+            position: fixed;
+            inset: 0;
+            z-index: 15;
+            pointer-events: none;
+            display: none;
+        }
+        #move-joystick {
+            position: absolute;
+            left: 28px;
+            bottom: 28px;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 216, 64, 0.9);
+            background: rgba(0, 0, 0, 0.35);
+            box-shadow: 0 0 18px rgba(0, 0, 0, 0.5) inset;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        #move-knob {
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            left: calc(50% - 32px);
+            top: calc(50% - 32px);
+            border-radius: 50%;
+            border: 2px solid rgba(255, 216, 64, 0.95);
+            background: rgba(255, 216, 64, 0.28);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+        }
+        #touch-look-zone {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 60vw;
+            height: 62vh;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        #touch-hint {
+            position: absolute;
+            right: 20px;
+            bottom: 24px;
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 0.85rem;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            border-radius: 999px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+        }
+        @media (max-width: 820px), (pointer: coarse) {
+            h1 {
+                font-size: 2rem;
+                letter-spacing: 2px;
+            }
+            p {
+                font-size: 1rem;
+            }
+            .controls {
+                font-size: 0.95rem;
+                padding: 12px;
+            }
         }
         #loading {
             position: absolute;
@@ -146,6 +214,14 @@
             <b>MOUSE</b> to Look<br>
             <b>ESC</b> to Pause
         </div>
+    </div>
+
+    <div id="touch-ui" aria-hidden="true">
+        <div id="move-joystick">
+            <div id="move-knob"></div>
+        </div>
+        <div id="touch-look-zone"></div>
+        <div id="touch-hint">Touch right side to look around</div>
     </div>
 
     <div id="loading">Loading Assets...</div>
@@ -338,6 +414,16 @@
         };
         let devToolkitEl;
         let suppressInstructionsOverlay = false;
+        let touchUiEl;
+        const touchState = {
+            isMobileOrTablet: false,
+            movePointerId: null,
+            lookPointerId: null,
+            joystickVector: new THREE.Vector2(0, 0),
+            joystickCenter: new THREE.Vector2(0, 0),
+            joystickRadius: 56,
+            lookLast: new THREE.Vector2(0, 0)
+        };
 
         init();
         animate();
@@ -372,11 +458,21 @@
 
             controls = new PointerLockControls(camera, document.body);
             initDevToolkit();
+            touchState.isMobileOrTablet = detectMobileOrTablet();
+            applyDeviceSpecificInstructions(touchState.isMobileOrTablet);
+            touchUiEl = document.getElementById('touch-ui');
+            initTouchControls();
 
             const instructions = document.getElementById('instructions');
             instructions.addEventListener('click', function () {
                 window.focus(); 
-                controls.lock();
+                if (!touchState.isMobileOrTablet) {
+                    controls.lock();
+                } else {
+                    instructions.style.display = 'none';
+                    controls.isLocked = true;
+                    if (touchUiEl) touchUiEl.style.display = 'block';
+                }
             });
             
             document.addEventListener('pointerlockerror', (event) => {
@@ -393,9 +489,14 @@
                 if (!suppressInstructionsOverlay) {
                     instructions.style.display = 'flex';
                 }
+                if (touchState.isMobileOrTablet && touchUiEl) touchUiEl.style.display = 'none';
             });
 
             scene.add(controls.getObject());
+
+            if (touchState.isMobileOrTablet) {
+                controls.isLocked = true;
+            }
 
             const onKeyDown = function (event) {
                 if (event.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) {
@@ -488,6 +589,159 @@
             buildExhibitsAndArt();
 
             window.addEventListener('resize', onWindowResize);
+        }
+
+        function detectMobileOrTablet() {
+            const ua = navigator.userAgent || '';
+            const touchCapable = navigator.maxTouchPoints > 0;
+            const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+            const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle|PlayBook|IEMobile/i.test(ua);
+            return mobileUA || (touchCapable && coarsePointer);
+        }
+
+        function applyDeviceSpecificInstructions(isTouchDevice) {
+            const instructions = document.getElementById('instructions');
+            const prompt = instructions.querySelector('p');
+            const controlsText = instructions.querySelector('.controls');
+
+            if (isTouchDevice) {
+                prompt.textContent = 'Press anywhere to Enter';
+                controlsText.innerHTML = '<b>Left Analog</b> to Move<br><b>Touch Right Side</b> to Look<br><b>Two Finger Tap</b> to Pause';
+            } else {
+                prompt.textContent = 'Click anywhere to Enter';
+                controlsText.innerHTML = '<b>WASD</b> to Move<br><b>MOUSE</b> to Look<br><b>ESC</b> to Pause';
+            }
+        }
+
+        function initTouchControls() {
+            const touchUi = document.getElementById('touch-ui');
+            if (!touchState.isMobileOrTablet || !touchUi) return;
+
+            const joystick = document.getElementById('move-joystick');
+            const knob = document.getElementById('move-knob');
+            const lookZone = document.getElementById('touch-look-zone');
+
+
+            const updateJoystickCenter = () => {
+                const rect = joystick.getBoundingClientRect();
+                touchState.joystickCenter.set(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                touchState.joystickRadius = rect.width * 0.4;
+            };
+            updateJoystickCenter();
+
+            const resetJoystick = () => {
+                touchState.joystickVector.set(0, 0);
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
+                knob.style.transform = 'translate(0px, 0px)';
+            };
+
+            const updateMovementFlagsFromJoystick = () => {
+                const x = touchState.joystickVector.x;
+                const y = touchState.joystickVector.y;
+                const threshold = 0.15;
+                moveLeft = x < -threshold;
+                moveRight = x > threshold;
+                moveForward = y < -threshold;
+                moveBackward = y > threshold;
+            };
+
+            const updateJoystickFromTouch = (touch) => {
+                const dx = touch.clientX - touchState.joystickCenter.x;
+                const dy = touch.clientY - touchState.joystickCenter.y;
+                const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+                const clamped = Math.min(distance, touchState.joystickRadius);
+                const nx = dx / distance;
+                const ny = dy / distance;
+                const vx = (nx * clamped) / touchState.joystickRadius;
+                const vy = (ny * clamped) / touchState.joystickRadius;
+
+                touchState.joystickVector.set(vx, vy);
+                updateMovementFlagsFromJoystick();
+                knob.style.transform = `translate(${(vx * touchState.joystickRadius).toFixed(1)}px, ${(vy * touchState.joystickRadius).toFixed(1)}px)`;
+            };
+
+            const findTouchById = (touchList, id) => {
+                for (let i = 0; i < touchList.length; i++) {
+                    if (touchList[i].identifier === id) return touchList[i];
+                }
+                return null;
+            };
+
+            joystick.addEventListener('touchstart', (event) => {
+                event.preventDefault();
+                updateJoystickCenter();
+                const touch = event.changedTouches[0];
+                touchState.movePointerId = touch.identifier;
+                updateJoystickFromTouch(touch);
+            }, { passive: false });
+
+            joystick.addEventListener('touchmove', (event) => {
+                event.preventDefault();
+                if (touchState.movePointerId === null) return;
+                const touch = findTouchById(event.touches, touchState.movePointerId);
+                if (touch) updateJoystickFromTouch(touch);
+            }, { passive: false });
+
+            const endJoystickTouch = (event) => {
+                if (touchState.movePointerId === null) return;
+                const ended = findTouchById(event.changedTouches, touchState.movePointerId);
+                if (!ended) return;
+                touchState.movePointerId = null;
+                resetJoystick();
+            };
+
+            joystick.addEventListener('touchend', endJoystickTouch, { passive: false });
+            joystick.addEventListener('touchcancel', endJoystickTouch, { passive: false });
+
+            lookZone.addEventListener('touchstart', (event) => {
+                event.preventDefault();
+                const touch = event.changedTouches[0];
+                touchState.lookPointerId = touch.identifier;
+                touchState.lookLast.set(touch.clientX, touch.clientY);
+            }, { passive: false });
+
+            lookZone.addEventListener('touchmove', (event) => {
+                event.preventDefault();
+                if (touchState.lookPointerId === null) return;
+                const touch = findTouchById(event.touches, touchState.lookPointerId);
+                if (!touch) return;
+
+                const movementX = touch.clientX - touchState.lookLast.x;
+                const movementY = touch.clientY - touchState.lookLast.y;
+                touchState.lookLast.set(touch.clientX, touch.clientY);
+
+                _euler.setFromQuaternion(camera.quaternion);
+                _euler.y -= movementX * 0.004;
+                _euler.x -= movementY * 0.004;
+                _euler.x = Math.max(_PI_2 - controls.maxPolarAngle, Math.min(_PI_2 - controls.minPolarAngle, _euler.x));
+                camera.quaternion.setFromEuler(_euler);
+            }, { passive: false });
+
+            const endLookTouch = (event) => {
+                if (touchState.lookPointerId === null) return;
+                const ended = findTouchById(event.changedTouches, touchState.lookPointerId);
+                if (!ended) return;
+                touchState.lookPointerId = null;
+            };
+
+            lookZone.addEventListener('touchend', endLookTouch, { passive: false });
+            lookZone.addEventListener('touchcancel', endLookTouch, { passive: false });
+
+            touchUi.addEventListener('touchstart', (event) => {
+                if (event.touches.length >= 2) {
+                    controls.isLocked = false;
+                    document.getElementById('instructions').style.display = 'flex';
+                    if (touchUiEl) touchUiEl.style.display = 'none';
+                    resetJoystick();
+                    touchState.lookPointerId = null;
+                }
+            }, { passive: true });
+
+            window.addEventListener('resize', updateJoystickCenter);
+            resetJoystick();
         }
 
         // --- Procedural Textures ---
@@ -1379,6 +1633,11 @@
                 direction.z = Number(moveForward) - Number(moveBackward);
                 direction.x = Number(moveRight) - Number(moveLeft);
                 direction.normalize(); 
+
+                if (touchState.isMobileOrTablet && touchState.movePointerId !== null) {
+                    direction.x = touchState.joystickVector.x;
+                    direction.z = -touchState.joystickVector.y;
+                }
 
                 let speed = isSprinting ? SPRINT_SPEED : PLAYER_SPEED;
                 if (isCrouching) speed = CROUCH_SPEED;
