@@ -646,7 +646,7 @@
 
             if (isTouchDevice) {
                 prompt.textContent = 'Press anywhere to Enter';
-                controlsText.innerHTML = '<b>Left Analog</b> to Move<br><b>Touch Right Side</b> to Look<br><b>Two Finger Tap</b> to Pause';
+                controlsText.innerHTML = '<b>Left Analog</b> to Move<br><b>Touch Right Side</b> to Look';
             } else {
                 prompt.textContent = 'Click anywhere to Enter';
                 controlsText.innerHTML = '<b>WASD</b> to Move<br><b>MOUSE</b> to Look<br><b>ESC</b> to Pause';
@@ -777,16 +777,6 @@
 
             lookZone.addEventListener('touchend', endLookTouch, { passive: false });
             lookZone.addEventListener('touchcancel', endLookTouch, { passive: false });
-
-            touchUi.addEventListener('touchstart', (event) => {
-                if (event.touches.length >= 2) {
-                    controls.isLocked = false;
-                    document.getElementById('instructions').style.display = 'flex';
-                    if (touchUiEl) touchUiEl.style.display = 'none';
-                    resetJoystick();
-                    touchState.lookPointerId = null;
-                }
-            }, { passive: true });
 
             window.addEventListener('resize', updateJoystickCenter);
             resetJoystick();
