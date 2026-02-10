@@ -670,14 +670,13 @@
                 emissiveIntensity: 0.2
             });
 
-            // Special Gold Material for Spotlights (Pedestal Bases)
-            // No emissive to prevent whiteout under intense light
+            // Pedestal baseboards now match the wall/pillar Ming gold trim.
             const spotlightGoldMat = new THREE.MeshStandardMaterial({
-                color: 0xCCAA00, // Slightly darker base
-                roughness: 0.2,  // Shinier
-                metalness: 0.6,  // More metal interaction with light
-                emissive: 0x000000,
-                emissiveIntensity: 0.0
+                color: 0xFFD700,
+                roughness: 0.3,
+                metalness: 0.4,
+                emissive: 0xaa8800,
+                emissiveIntensity: 0.2
             });
 
             // Floor
@@ -1093,10 +1092,10 @@
             };
 
             const artifactLightTuning = {
-                north: { midY: 3.000, sideDistance: 3.7, sideTargetOffset: 1.2, sideIntensity: 1.9 },
-                south: { midY: 2.19, sideDistance: 3.4, sideTargetOffset: 1.1, sideIntensity: 1.8 },
-                east: { midY: 1.95, sideDistance: 3.2, sideTargetOffset: 1.0, sideIntensity: 1.65 },
-                west: { midY: 1.89, sideDistance: 3.2, sideTargetOffset: 1.0, sideIntensity: 1.65 }
+                north: { midY: 3.000, sideDistance: 3.7, sideTargetOffset: 1.2, sideIntensity: 1.9, centerOffsetY: 0.9, centerIntensity: 4.2 },
+                south: { midY: 2.19, sideDistance: 3.4, sideTargetOffset: 1.1, sideIntensity: 1.8, centerOffsetY: 0.9, centerIntensity: 4.0 },
+                east: { midY: 2.05, sideDistance: 3.8, sideTargetOffset: 1.35, sideIntensity: 2.75, centerOffsetY: 0.6, centerIntensity: 6.2 },
+                west: { midY: 1.98, sideDistance: 3.8, sideTargetOffset: 1.35, sideIntensity: 2.75, centerOffsetY: 0.6, centerIntensity: 6.2 }
             };
 
             const alignArtifactToPedestal = (object, targetPosition, targetHeight = 1.2, pedestalTopY = 2.2) => {
@@ -1207,7 +1206,7 @@
                 fillLight.position.set(conf.pos.x + 1.5, 2.8, conf.pos.z + 1.5);
                 scene.add(fillLight);
 
-                const lightTuning = artifactLightTuning[conf.id] || { midY: 2.2, sideDistance: 3.2, sideTargetOffset: 1.0, sideIntensity: 1.6 };
+                const lightTuning = artifactLightTuning[conf.id] || { midY: 2.2, sideDistance: 3.2, sideTargetOffset: 1.0, sideIntensity: 1.6, centerOffsetY: 0.8, centerIntensity: 3.8 };
                 const radialDir = conf.pos.clone().setY(0).normalize();
                 const sideAxis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), radialDir).normalize();
                 const sideLightRange = 12;
@@ -1233,6 +1232,29 @@
                     sideLight.target = sideTarget;
                     scene.add(sideTarget);
                     scene.add(sideLight);
+                });
+
+                // Add two inward key lights aimed at the artifact center of gravity area
+                // so darker assets (golden + bowl) are fully readable.
+                const keyLightDistance = 4.8;
+                const keyLightY = lightTuning.midY + lightTuning.centerOffsetY;
+                const keyLightPositions = [
+                    conf.pos.clone().add(radialDir.clone().multiplyScalar(keyLightDistance)).setY(keyLightY),
+                    conf.pos.clone().add(radialDir.clone().multiplyScalar(-keyLightDistance)).setY(keyLightY)
+                ];
+
+                keyLightPositions.forEach((lightPos) => {
+                    const keyLight = new THREE.SpotLight(0xfff6de, lightTuning.centerIntensity, 20);
+                    keyLight.position.copy(lightPos);
+                    keyLight.angle = Math.PI / 5;
+                    keyLight.penumbra = 0.5;
+                    keyLight.decay = 1.1;
+
+                    const centerTarget = new THREE.Object3D();
+                    centerTarget.position.set(conf.pos.x, lightTuning.midY, conf.pos.z);
+                    keyLight.target = centerTarget;
+                    scene.add(centerTarget);
+                    scene.add(keyLight);
                 });
 
                 const spotLight = new THREE.SpotLight(0xfff4d0, 13.5);
