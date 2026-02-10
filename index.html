@@ -66,67 +66,6 @@
             padding: 10px;
             border-radius: 4px;
         }
-        #dev-tools {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 290px;
-            max-height: calc(100vh - 40px);
-            overflow-y: auto;
-            background: rgba(12, 12, 12, 0.94);
-            border: 1px solid rgba(255, 216, 64, 0.5);
-            border-radius: 8px;
-            color: #eee;
-            z-index: 25;
-            padding: 12px;
-            font-family: Arial, sans-serif;
-            display: none;
-        }
-        #dev-tools h2 {
-            margin: 0 0 10px;
-            font-size: 1rem;
-            color: #FFD840;
-            letter-spacing: 0.06em;
-        }
-        #dev-tools label {
-            display: block;
-            font-size: 0.8rem;
-            margin-bottom: 4px;
-            color: #cfcfcf;
-        }
-        #dev-tools select,
-        #dev-tools input {
-            width: 100%;
-            box-sizing: border-box;
-            margin-bottom: 8px;
-            border: 1px solid #555;
-            border-radius: 4px;
-            padding: 5px 6px;
-            background: #1b1b1b;
-            color: #f0f0f0;
-            font-size: 0.85rem;
-        }
-        #dev-tools .group-title {
-            margin: 10px 0 4px;
-            padding-top: 8px;
-            border-top: 1px solid rgba(255, 255, 255, 0.12);
-            color: #FFD840;
-            font-size: 0.78rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-        }
-        #dev-json-output {
-            margin-top: 8px;
-            padding: 8px;
-            border: 1px solid rgba(255,255,255,0.18);
-            border-radius: 4px;
-            background: #111;
-            color: #9be39b;
-            font-family: monospace;
-            font-size: 0.72rem;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
     </style>
     <script type="importmap">
         {
@@ -151,38 +90,6 @@
     </div>
 
     <div id="loading">Loading Assets...</div>
-
-    <div id="dev-tools">
-        <h2>Artifact Dev Toolkit</h2>
-        <label for="model-select">Model</label>
-        <select id="model-select"></select>
-
-        <div class="group-title">Position</div>
-        <label for="pos-x">X</label>
-        <input id="pos-x" type="number" step="0.01">
-        <label for="pos-y">Y</label>
-        <input id="pos-y" type="number" step="0.01">
-        <label for="pos-z">Z</label>
-        <input id="pos-z" type="number" step="0.01">
-
-        <div class="group-title">Rotation (Radians)</div>
-        <label for="rot-x">X</label>
-        <input id="rot-x" type="number" step="0.01">
-        <label for="rot-y">Y</label>
-        <input id="rot-y" type="number" step="0.01">
-        <label for="rot-z">Z</label>
-        <input id="rot-z" type="number" step="0.01">
-
-        <div class="group-title">Scale</div>
-        <label for="scale-x">X</label>
-        <input id="scale-x" type="number" step="0.01" min="0.01">
-        <label for="scale-y">Y</label>
-        <input id="scale-y" type="number" step="0.01" min="0.01">
-        <label for="scale-z">Z</label>
-        <input id="scale-z" type="number" step="0.01" min="0.01">
-
-        <div id="dev-json-output"></div>
-    </div>
 
     <script type="module">
         import * as THREE from 'three';
@@ -335,17 +242,6 @@
         const rotatingArtifacts = [];
         let artifactSpinEnabled = false;
 
-        const artifactModelDefaults = {
-            north: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-            south: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-            east: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-            west: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
-        };
-        const loadedArtifacts = {};
-        let devToolsVisible = false;
-        let activeDevModel = 'north';
-        let devDom = null;
-
         init();
         animate();
 
@@ -378,7 +274,6 @@
             };
 
             controls = new PointerLockControls(camera, document.body);
-            initDevToolkit();
 
             const instructions = document.getElementById('instructions');
             instructions.addEventListener('click', function () {
@@ -419,9 +314,6 @@
                     case 'ControlLeft': isCrouching = true; break;
                     case 'KeyH':
                         artifactSpinEnabled = !artifactSpinEnabled;
-                        break;
-                    case 'KeyI':
-                        toggleDevTools();
                         break;
                 }
             };
@@ -942,37 +834,6 @@
                 object.position.y += yOffset;
             };
 
-            const applyArtifactTransform = (id) => {
-                const artifact = loadedArtifacts[id];
-                if (!artifact) return;
-                const conf = exhibitConfs.find((entry) => entry.id === id);
-                const transform = artifactTransformConfig[id] || { orientation: new THREE.Euler(0, 0, 0) };
-                const devValues = artifactModelDefaults[id];
-                alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
-                const lookTarget = new THREE.Vector3(0, artifact.position.y, 0);
-                artifact.lookAt(lookTarget);
-                artifact.rotation.x += transform.orientation.x;
-                artifact.rotation.y += transform.orientation.y;
-                artifact.rotation.z += transform.orientation.z;
-                alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
-                artifact.position.x += devValues.position.x;
-                artifact.position.y += devValues.position.y;
-                artifact.position.z += devValues.position.z;
-                artifact.rotation.x += devValues.rotation.x;
-                artifact.rotation.y += devValues.rotation.y;
-                artifact.rotation.z += devValues.rotation.z;
-                artifact.scale.multiply(new THREE.Vector3(devValues.scale.x, devValues.scale.y, devValues.scale.z));
-                artifact.userData.baseRotation = {
-                    x: artifact.rotation.x,
-                    y: artifact.rotation.y,
-                    z: artifact.rotation.z
-                };
-                const spinEntry = rotatingArtifacts.find((entry) => entry.id === id);
-                if (spinEntry) {
-                    spinEntry.baseRotation = artifact.userData.baseRotation;
-                }
-            };
-
             exhibitConfs.forEach((conf) => {
                 // Pedestal
                 const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
@@ -1007,20 +868,26 @@
                                 }
                             }
                         });
-                        loadedArtifacts[conf.id] = artifact;
-                        applyArtifactTransform(conf.id);
+                        alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
+                        const lookTarget = new THREE.Vector3(0, artifact.position.y, 0);
+                        artifact.lookAt(lookTarget);
+                        artifact.rotation.x += transform.orientation.x;
+                        artifact.rotation.y += transform.orientation.y;
+                        artifact.rotation.z += transform.orientation.z;
+                        alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
+                        artifact.userData.baseRotation = {
+                            x: artifact.rotation.x,
+                            y: artifact.rotation.y,
+                            z: artifact.rotation.z
+                        };
                         artifactTarget.position.copy(artifact.position);
                         scene.add(artifact);
                         rotatingArtifacts.push({
-                            id: conf.id,
                             mesh: artifact,
                             baseRotation: artifact.userData.baseRotation,
                             axis: transform.spinAxis,
                             speed: 0.2
                         });
-                        if (activeDevModel === conf.id) {
-                            updateDevInputsFromModel(conf.id);
-                        }
                     });
                 }
 
@@ -1074,157 +941,6 @@
                     loadPainting(pData.url, paintPos, conf.wallNormal, 3.5, textureLoader);
                 });
             });
-        }
-
-        function initDevToolkit() {
-            devDom = {
-                panel: document.getElementById('dev-tools'),
-                modelSelect: document.getElementById('model-select'),
-                output: document.getElementById('dev-json-output'),
-                fields: {
-                    position: {
-                        x: document.getElementById('pos-x'),
-                        y: document.getElementById('pos-y'),
-                        z: document.getElementById('pos-z')
-                    },
-                    rotation: {
-                        x: document.getElementById('rot-x'),
-                        y: document.getElementById('rot-y'),
-                        z: document.getElementById('rot-z')
-                    },
-                    scale: {
-                        x: document.getElementById('scale-x'),
-                        y: document.getElementById('scale-y'),
-                        z: document.getElementById('scale-z')
-                    }
-                }
-            };
-
-            const modelNames = {
-                north: 'North - Statue',
-                south: 'South - Pot',
-                east: 'East - Golden',
-                west: 'West - Bowl'
-            };
-
-            Object.keys(artifactModelDefaults).forEach((id) => {
-                const option = document.createElement('option');
-                option.value = id;
-                option.textContent = modelNames[id] || id;
-                devDom.modelSelect.appendChild(option);
-            });
-
-            devDom.modelSelect.value = activeDevModel;
-            devDom.modelSelect.addEventListener('change', () => {
-                activeDevModel = devDom.modelSelect.value;
-                updateDevInputsFromModel(activeDevModel);
-            });
-
-            ['position', 'rotation', 'scale'].forEach((group) => {
-                ['x', 'y', 'z'].forEach((axis) => {
-                    devDom.fields[group][axis].addEventListener('input', () => {
-                        const value = Number(devDom.fields[group][axis].value);
-                        artifactModelDefaults[activeDevModel][group][axis] = Number.isFinite(value) ? value : 0;
-                        applyDevTransformToModel(activeDevModel);
-                        refreshDevOutput();
-                    });
-                });
-            });
-
-            updateDevInputsFromModel(activeDevModel);
-            refreshDevOutput();
-        }
-
-        function toggleDevTools() {
-            devToolsVisible = !devToolsVisible;
-            devDom.panel.style.display = devToolsVisible ? 'block' : 'none';
-            if (devToolsVisible) {
-                updateDevInputsFromModel(activeDevModel);
-                refreshDevOutput();
-            }
-        }
-
-        function updateDevInputsFromModel(id) {
-            const data = artifactModelDefaults[id];
-            if (!data || !devDom) return;
-            ['position', 'rotation', 'scale'].forEach((group) => {
-                ['x', 'y', 'z'].forEach((axis) => {
-                    devDom.fields[group][axis].value = data[group][axis].toFixed(2);
-                });
-            });
-        }
-
-        function applyDevTransformToModel(id) {
-            const artifact = loadedArtifacts[id];
-            if (!artifact) return;
-            const confPosById = {
-                north: new THREE.Vector3(0, 0, -15),
-                south: new THREE.Vector3(0, 0, 15),
-                east: new THREE.Vector3(15, 0, 0),
-                west: new THREE.Vector3(-15, 0, 0)
-            };
-            const orientationById = {
-                north: new THREE.Euler(Math.PI / 2, 0, 0),
-                south: new THREE.Euler(Math.PI / 2, 0, 0),
-                east: new THREE.Euler(0, 0, 0),
-                west: new THREE.Euler(0, 0, 0)
-            };
-
-            const alignArtifactToPedestal = (object, targetPosition, targetHeight = 1.2, pedestalTopY = 2.2) => {
-                const box = new THREE.Box3().setFromObject(object);
-                const size = new THREE.Vector3();
-                box.getSize(size);
-                if (size.y > 0) {
-                    const scale = targetHeight / size.y;
-                    object.scale.setScalar(scale);
-                }
-                object.position.set(targetPosition.x, pedestalTopY, targetPosition.z);
-                object.updateMatrixWorld(true);
-                const worldBox = new THREE.Box3().setFromObject(object);
-                const center = worldBox.getCenter(new THREE.Vector3());
-                object.position.x += targetPosition.x - center.x;
-                object.position.z += targetPosition.z - center.z;
-                object.updateMatrixWorld(true);
-                const alignedBox = new THREE.Box3().setFromObject(object);
-                const yOffset = pedestalTopY - alignedBox.min.y;
-                object.position.y += yOffset;
-            };
-
-            const basePos = confPosById[id];
-            const baseOrientation = orientationById[id] || new THREE.Euler(0, 0, 0);
-            const values = artifactModelDefaults[id];
-
-            alignArtifactToPedestal(artifact, basePos, 1.3, 2.2);
-            const lookTarget = new THREE.Vector3(0, artifact.position.y, 0);
-            artifact.lookAt(lookTarget);
-            artifact.rotation.x += baseOrientation.x;
-            artifact.rotation.y += baseOrientation.y;
-            artifact.rotation.z += baseOrientation.z;
-            alignArtifactToPedestal(artifact, basePos, 1.3, 2.2);
-
-            artifact.position.x += values.position.x;
-            artifact.position.y += values.position.y;
-            artifact.position.z += values.position.z;
-            artifact.rotation.x += values.rotation.x;
-            artifact.rotation.y += values.rotation.y;
-            artifact.rotation.z += values.rotation.z;
-            artifact.scale.multiply(new THREE.Vector3(values.scale.x, values.scale.y, values.scale.z));
-
-            artifact.userData.baseRotation = {
-                x: artifact.rotation.x,
-                y: artifact.rotation.y,
-                z: artifact.rotation.z
-            };
-
-            const spinEntry = rotatingArtifacts.find((entry) => entry.id === id);
-            if (spinEntry) {
-                spinEntry.baseRotation = artifact.userData.baseRotation;
-            }
-        }
-
-        function refreshDevOutput() {
-            if (!devDom) return;
-            devDom.output.textContent = JSON.stringify(artifactModelDefaults, null, 2);
         }
 
         function loadPainting(url, position, normal, forcedHeight = 3.5, loader) {
