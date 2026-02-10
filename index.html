@@ -66,6 +66,65 @@
             padding: 10px;
             border-radius: 4px;
         }
+        #dev-toolkit {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            padding: 14px;
+            color: #f2f2f2;
+            background: rgba(0, 0, 0, 0.88);
+            border: 1px solid #3f3f3f;
+            border-radius: 8px;
+            z-index: 20;
+            display: none;
+            box-shadow: 0 10px 22px rgba(0, 0, 0, 0.4);
+            font-family: Arial, sans-serif;
+        }
+        #dev-toolkit h2 {
+            margin: 0 0 12px;
+            font-size: 1.1rem;
+            color: #FFD840;
+        }
+        #dev-toolkit .dev-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        #dev-toolkit .group-title {
+            margin: 12px 0 6px;
+            font-size: 0.9rem;
+            color: #FFD840;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+        }
+        #dev-toolkit input,
+        #dev-toolkit select {
+            width: 100%;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 6px;
+            font-size: 0.86rem;
+            background: #151515;
+            color: #f2f2f2;
+        }
+        #dev-toolkit code {
+            color: #9dc8ff;
+            font-size: 0.8rem;
+            background: #111;
+            border: 1px solid #444;
+            padding: 1px 4px;
+            border-radius: 4px;
+        }
+        #dev-toolkit .hint {
+            margin: 0 0 10px;
+            font-size: 0.8rem;
+            color: #bdbdbd;
+        }
     </style>
     <script type="importmap">
         {
@@ -90,6 +149,35 @@
     </div>
 
     <div id="loading">Loading Assets...</div>
+
+    <div id="dev-toolkit">
+        <h2>3D Artifact Dev Tools</h2>
+        <p class="hint">Toggle with hidden key <code>I</code>. Values are live and editable.</p>
+        <div class="dev-row">
+            <label for="dev-artifact-select">Artifact</label>
+            <select id="dev-artifact-select">
+                <option value="north">North (Statue)</option>
+                <option value="south">South (Pot)</option>
+                <option value="east">East (Golden)</option>
+                <option value="west">West (Bowl)</option>
+            </select>
+        </div>
+
+        <div class="group-title">Position</div>
+        <div class="dev-row"><label for="dev-pos-x">X</label><input id="dev-pos-x" type="number" step="0.01"></div>
+        <div class="dev-row"><label for="dev-pos-y">Y</label><input id="dev-pos-y" type="number" step="0.01"></div>
+        <div class="dev-row"><label for="dev-pos-z">Z</label><input id="dev-pos-z" type="number" step="0.01"></div>
+
+        <div class="group-title">Scale</div>
+        <div class="dev-row"><label for="dev-scale-x">X</label><input id="dev-scale-x" type="number" step="0.01" min="0.01"></div>
+        <div class="dev-row"><label for="dev-scale-y">Y</label><input id="dev-scale-y" type="number" step="0.01" min="0.01"></div>
+        <div class="dev-row"><label for="dev-scale-z">Z</label><input id="dev-scale-z" type="number" step="0.01" min="0.01"></div>
+
+        <div class="group-title">Rotation (radians)</div>
+        <div class="dev-row"><label for="dev-rot-x">X</label><input id="dev-rot-x" type="number" step="0.01"></div>
+        <div class="dev-row"><label for="dev-rot-y">Y</label><input id="dev-rot-y" type="number" step="0.01"></div>
+        <div class="dev-row"><label for="dev-rot-z">Z</label><input id="dev-rot-z" type="number" step="0.01"></div>
+    </div>
 
     <script type="module">
         import * as THREE from 'three';
@@ -241,6 +329,13 @@
         const collidableObjects = []; 
         const rotatingArtifacts = [];
         let artifactSpinEnabled = false;
+        const artifactRegistry = {};
+        const devToolkitState = {
+            isVisible: false,
+            selectedId: 'north',
+            isUpdatingInputs: false
+        };
+        let devToolkitEl;
 
         init();
         animate();
@@ -274,6 +369,7 @@
             };
 
             controls = new PointerLockControls(camera, document.body);
+            initDevToolkit();
 
             const instructions = document.getElementById('instructions');
             instructions.addEventListener('click', function () {
@@ -314,6 +410,9 @@
                     case 'ControlLeft': isCrouching = true; break;
                     case 'KeyH':
                         artifactSpinEnabled = !artifactSpinEnabled;
+                        break;
+                    case 'KeyI':
+                        toggleDevToolkit();
                         break;
                 }
             };
@@ -739,6 +838,100 @@
             scene.add(mainLight);
         }
 
+        function initDevToolkit() {
+            devToolkitEl = document.getElementById('dev-toolkit');
+            const artifactSelect = document.getElementById('dev-artifact-select');
+            artifactSelect.addEventListener('change', (event) => {
+                devToolkitState.selectedId = event.target.value;
+                syncInputsFromSelectedArtifact();
+            });
+
+            const inputIds = [
+                'dev-pos-x', 'dev-pos-y', 'dev-pos-z',
+                'dev-scale-x', 'dev-scale-y', 'dev-scale-z',
+                'dev-rot-x', 'dev-rot-y', 'dev-rot-z'
+            ];
+
+            inputIds.forEach((id) => {
+                const input = document.getElementById(id);
+                input.addEventListener('input', applyToolkitValuesToSelectedArtifact);
+            });
+        }
+
+        function toggleDevToolkit() {
+            if (!devToolkitEl) return;
+            devToolkitState.isVisible = !devToolkitState.isVisible;
+            devToolkitEl.style.display = devToolkitState.isVisible ? 'block' : 'none';
+
+            if (devToolkitState.isVisible) {
+                controls.unlock();
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
+                syncInputsFromSelectedArtifact();
+            }
+        }
+
+        function syncInputsFromSelectedArtifact() {
+            const artifact = artifactRegistry[devToolkitState.selectedId];
+            if (!artifact) return;
+
+            devToolkitState.isUpdatingInputs = true;
+            document.getElementById('dev-pos-x').value = artifact.position.x.toFixed(3);
+            document.getElementById('dev-pos-y').value = artifact.position.y.toFixed(3);
+            document.getElementById('dev-pos-z').value = artifact.position.z.toFixed(3);
+
+            document.getElementById('dev-scale-x').value = artifact.scale.x.toFixed(3);
+            document.getElementById('dev-scale-y').value = artifact.scale.y.toFixed(3);
+            document.getElementById('dev-scale-z').value = artifact.scale.z.toFixed(3);
+
+            document.getElementById('dev-rot-x').value = artifact.rotation.x.toFixed(3);
+            document.getElementById('dev-rot-y').value = artifact.rotation.y.toFixed(3);
+            document.getElementById('dev-rot-z').value = artifact.rotation.z.toFixed(3);
+            devToolkitState.isUpdatingInputs = false;
+        }
+
+        function applyToolkitValuesToSelectedArtifact() {
+            if (devToolkitState.isUpdatingInputs) return;
+            const artifact = artifactRegistry[devToolkitState.selectedId];
+            if (!artifact) return;
+
+            const read = (id, fallback) => {
+                const value = Number.parseFloat(document.getElementById(id).value);
+                return Number.isFinite(value) ? value : fallback;
+            };
+
+            artifact.position.set(
+                read('dev-pos-x', artifact.position.x),
+                read('dev-pos-y', artifact.position.y),
+                read('dev-pos-z', artifact.position.z)
+            );
+
+            artifact.scale.set(
+                Math.max(0.01, read('dev-scale-x', artifact.scale.x)),
+                Math.max(0.01, read('dev-scale-y', artifact.scale.y)),
+                Math.max(0.01, read('dev-scale-z', artifact.scale.z))
+            );
+
+            artifact.rotation.set(
+                read('dev-rot-x', artifact.rotation.x),
+                read('dev-rot-y', artifact.rotation.y),
+                read('dev-rot-z', artifact.rotation.z)
+            );
+
+            artifact.userData.baseRotation = {
+                x: artifact.rotation.x,
+                y: artifact.rotation.y,
+                z: artifact.rotation.z
+            };
+
+            const spinEntry = rotatingArtifacts.find((entry) => entry.mesh === artifact);
+            if (spinEntry) {
+                spinEntry.baseRotation = artifact.userData.baseRotation;
+            }
+        }
+
         function buildExhibitsAndArt(goldMat, spotlightGoldMat) {
             const textureLoader = new THREE.TextureLoader(loadingManager);
             textureLoader.setCrossOrigin('anonymous');
@@ -880,6 +1073,8 @@
                             y: artifact.rotation.y,
                             z: artifact.rotation.z
                         };
+                        artifactRegistry[conf.id] = artifact;
+                        artifact.userData.artifactId = conf.id;
                         artifactTarget.position.copy(artifact.position);
                         scene.add(artifact);
                         rotatingArtifacts.push({
@@ -888,6 +1083,10 @@
                             axis: transform.spinAxis,
                             speed: 0.2
                         });
+
+                        if (devToolkitState.isVisible && devToolkitState.selectedId === conf.id) {
+                            syncInputsFromSelectedArtifact();
+                        }
                     });
                 }
 
