@@ -169,6 +169,7 @@
         <div class="dev-row"><label for="dev-pos-z">Z</label><input id="dev-pos-z" type="number" step="0.01"></div>
 
         <div class="group-title">Scale</div>
+        <div class="dev-row"><label for="dev-scale-uniform">Uniform</label><input id="dev-scale-uniform" type="checkbox" checked></div>
         <div class="dev-row"><label for="dev-scale-x">X</label><input id="dev-scale-x" type="number" step="0.01" min="0.01"></div>
         <div class="dev-row"><label for="dev-scale-y">Y</label><input id="dev-scale-y" type="number" step="0.01" min="0.01"></div>
         <div class="dev-row"><label for="dev-scale-z">Z</label><input id="dev-scale-z" type="number" step="0.01" min="0.01"></div>
@@ -286,7 +287,7 @@
         const SPRINT_SPEED = 18.0; 
         const CROUCH_SPEED = 4.0;
         const GRAVITY = 300.0; 
-        const JUMP_FORCE = 25.0; 
+        const JUMP_FORCE = 37.5; 
         
         // Colors
         const COL_IMPERIAL_RED = 0x9B1B30; 
@@ -336,6 +337,7 @@
             isUpdatingInputs: false
         };
         let devToolkitEl;
+        let suppressInstructionsOverlay = false;
 
         init();
         animate();
@@ -378,7 +380,9 @@
             });
             
             document.addEventListener('pointerlockerror', (event) => {
-                instructions.style.display = 'flex';
+                if (!suppressInstructionsOverlay) {
+                    instructions.style.display = 'flex';
+                }
             });
 
             controls.addEventListener('lock', function () {
@@ -386,32 +390,57 @@
             });
 
             controls.addEventListener('unlock', function () {
-                instructions.style.display = 'flex';
+                if (!suppressInstructionsOverlay) {
+                    instructions.style.display = 'flex';
+                }
             });
 
             scene.add(controls.getObject());
 
             const onKeyDown = function (event) {
+                if (event.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) {
+                    event.preventDefault();
+                }
                 switch (event.code) {
                     case 'ArrowUp':
-                    case 'KeyW': moveForward = true; break;
+                    case 'KeyW':
+                        moveForward = true;
+                        event.preventDefault();
+                        break;
                     case 'ArrowLeft':
-                    case 'KeyA': moveLeft = true; break;
+                    case 'KeyA':
+                        moveLeft = true;
+                        event.preventDefault();
+                        break;
                     case 'ArrowDown':
-                    case 'KeyS': moveBackward = true; break;
+                    case 'KeyS':
+                        moveBackward = true;
+                        event.preventDefault();
+                        break;
                     case 'ArrowRight':
-                    case 'KeyD': moveRight = true; break;
+                    case 'KeyD':
+                        moveRight = true;
+                        event.preventDefault();
+                        break;
                     case 'Space': 
                         if (canJump === true) velocity.y += JUMP_FORCE;
                         canJump = false;
+                        event.preventDefault();
                         break;
                     case 'ShiftLeft':
-                    case 'ShiftRight': isSprinting = true; break;
-                    case 'ControlLeft': isCrouching = true; break;
+                    case 'ShiftRight':
+                        isSprinting = true;
+                        event.preventDefault();
+                        break;
+                    case 'ControlLeft':
+                        isCrouching = true;
+                        event.preventDefault();
+                        break;
                     case 'KeyH':
                         artifactSpinEnabled = !artifactSpinEnabled;
                         break;
                     case 'KeyI':
+                        event.preventDefault();
                         toggleDevToolkit();
                         break;
                 }
@@ -420,16 +449,34 @@
             const onKeyUp = function (event) {
                 switch (event.code) {
                     case 'ArrowUp':
-                    case 'KeyW': moveForward = false; break;
+                    case 'KeyW':
+                        moveForward = false;
+                        event.preventDefault();
+                        break;
                     case 'ArrowLeft':
-                    case 'KeyA': moveLeft = false; break;
+                    case 'KeyA':
+                        moveLeft = false;
+                        event.preventDefault();
+                        break;
                     case 'ArrowDown':
-                    case 'KeyS': moveBackward = false; break;
+                    case 'KeyS':
+                        moveBackward = false;
+                        event.preventDefault();
+                        break;
                     case 'ArrowRight':
-                    case 'KeyD': moveRight = false; break;
+                    case 'KeyD':
+                        moveRight = false;
+                        event.preventDefault();
+                        break;
                     case 'ShiftLeft':
-                    case 'ShiftRight': isSprinting = false; break;
-                    case 'ControlLeft': isCrouching = false; break;
+                    case 'ShiftRight':
+                        isSprinting = false;
+                        event.preventDefault();
+                        break;
+                    case 'ControlLeft':
+                        isCrouching = false;
+                        event.preventDefault();
+                        break;
                 }
             };
 
@@ -831,7 +878,7 @@
             scene.add(hemiLight);
 
             const mainLight = new THREE.PointLight(0xffaa55, 1.8, 90);
-            mainLight.position.set(0, 14, 0);
+            mainLight.position.set(0, 17.5, 0);
             mainLight.castShadow = true;
             mainLight.shadow.mapSize.width = 2048; 
             mainLight.shadow.mapSize.height = 2048;
@@ -852,9 +899,31 @@
                 'dev-rot-x', 'dev-rot-y', 'dev-rot-z'
             ];
 
+            const scaleUniformInput = document.getElementById('dev-scale-uniform');
+
             inputIds.forEach((id) => {
                 const input = document.getElementById(id);
                 input.addEventListener('input', applyToolkitValuesToSelectedArtifact);
+                input.addEventListener('wheel', (event) => {
+                    event.preventDefault();
+                    const currentValue = Number.parseFloat(input.value);
+                    const fallback = Number.isFinite(currentValue) ? currentValue : 0;
+                    const step = Number.parseFloat(input.step) || 1;
+                    const direction = event.deltaY < 0 ? 1 : -1;
+                    const nextValue = fallback + (direction * step);
+                    input.value = nextValue.toFixed(3);
+
+                    if (
+                        scaleUniformInput.checked &&
+                        ['dev-scale-x', 'dev-scale-y', 'dev-scale-z'].includes(id)
+                    ) {
+                        ['dev-scale-x', 'dev-scale-y', 'dev-scale-z'].forEach((scaleId) => {
+                            document.getElementById(scaleId).value = input.value;
+                        });
+                    }
+
+                    applyToolkitValuesToSelectedArtifact();
+                }, { passive: false });
             });
         }
 
@@ -864,12 +933,17 @@
             devToolkitEl.style.display = devToolkitState.isVisible ? 'block' : 'none';
 
             if (devToolkitState.isVisible) {
+                suppressInstructionsOverlay = true;
+                document.getElementById('instructions').style.display = 'none';
                 controls.unlock();
                 moveForward = false;
                 moveBackward = false;
                 moveLeft = false;
                 moveRight = false;
                 syncInputsFromSelectedArtifact();
+            } else {
+                suppressInstructionsOverlay = false;
+                document.getElementById('instructions').style.display = 'flex';
             }
         }
 
@@ -897,6 +971,8 @@
             const artifact = artifactRegistry[devToolkitState.selectedId];
             if (!artifact) return;
 
+            const scaleUniformInput = document.getElementById('dev-scale-uniform');
+
             const read = (id, fallback) => {
                 const value = Number.parseFloat(document.getElementById(id).value);
                 return Number.isFinite(value) ? value : fallback;
@@ -908,11 +984,16 @@
                 read('dev-pos-z', artifact.position.z)
             );
 
-            artifact.scale.set(
-                Math.max(0.01, read('dev-scale-x', artifact.scale.x)),
-                Math.max(0.01, read('dev-scale-y', artifact.scale.y)),
-                Math.max(0.01, read('dev-scale-z', artifact.scale.z))
-            );
+            const nextScaleX = Math.max(0.01, read('dev-scale-x', artifact.scale.x));
+            const nextScaleY = Math.max(0.01, read('dev-scale-y', artifact.scale.y));
+            const nextScaleZ = Math.max(0.01, read('dev-scale-z', artifact.scale.z));
+            if (scaleUniformInput.checked) {
+                artifact.scale.set(nextScaleX, nextScaleX, nextScaleX);
+                document.getElementById('dev-scale-y').value = nextScaleX.toFixed(3);
+                document.getElementById('dev-scale-z').value = nextScaleX.toFixed(3);
+            } else {
+                artifact.scale.set(nextScaleX, nextScaleY, nextScaleZ);
+            }
 
             artifact.rotation.set(
                 read('dev-rot-x', artifact.rotation.x),
@@ -983,12 +1064,12 @@
 
             const artifactTransformConfig = {
                 north: {
-                    // Statue: rotate 90° to stand upright.
-                    orientation: new THREE.Euler(Math.PI / 2, 0, 0),
+                    // Statue default rotation X.
+                    orientation: new THREE.Euler(0, 0, 0),
                     spinAxis: 'y'
                 },
                 south: {
-                    // Pot: rotate 90° to stand upright.
+                    // Pot default rotation X.
                     orientation: new THREE.Euler(Math.PI / 2, 0, 0),
                     spinAxis: 'y'
                 },
@@ -1002,6 +1083,13 @@
                     orientation: new THREE.Euler(0, 0, 0),
                     spinAxis: 'x'
                 }
+            };
+
+            const artifactDefaultOverrides = {
+                north: { rotationX: 0 },
+                south: { positionY: 2.19, scaleUniform: 3, rotationX: 3.142 },
+                east: { positionY: 1.95, scaleUniform: 1.5 },
+                west: { positionY: 1.89, scaleUniform: 2 }
             };
 
             const alignArtifactToPedestal = (object, targetPosition, targetHeight = 1.2, pedestalTopY = 2.2) => {
@@ -1068,6 +1156,20 @@
                         artifact.rotation.y += transform.orientation.y;
                         artifact.rotation.z += transform.orientation.z;
                         alignArtifactToPedestal(artifact, conf.pos, 1.3, 2.2);
+
+                        const overrides = artifactDefaultOverrides[conf.id];
+                        if (overrides) {
+                            if (Number.isFinite(overrides.scaleUniform)) {
+                                artifact.scale.setScalar(overrides.scaleUniform);
+                            }
+                            if (Number.isFinite(overrides.positionY)) {
+                                artifact.position.y = overrides.positionY;
+                            }
+                            if (Number.isFinite(overrides.rotationX)) {
+                                artifact.rotation.x = overrides.rotationX;
+                            }
+                        }
+
                         artifact.userData.baseRotation = {
                             x: artifact.rotation.x,
                             y: artifact.rotation.y,
@@ -1097,6 +1199,31 @@
                 const fillLight = new THREE.PointLight(0xffffff, 1.1, 9);
                 fillLight.position.set(conf.pos.x + 1.5, 2.8, conf.pos.z + 1.5);
                 scene.add(fillLight);
+
+                const sideLightDistance = 3.4;
+                const sideLightHeight = 2.6;
+                const sideLightIntensity = 1.4;
+                const sideLightRange = 11;
+                const sideLightOffsets = [
+                    new THREE.Vector3(sideLightDistance, 0, 0),
+                    new THREE.Vector3(-sideLightDistance, 0, 0),
+                    new THREE.Vector3(0, 0, sideLightDistance),
+                    new THREE.Vector3(0, 0, -sideLightDistance)
+                ];
+
+                sideLightOffsets.forEach((offset) => {
+                    const sideLight = new THREE.SpotLight(0xfff1dc, sideLightIntensity, sideLightRange);
+                    sideLight.position.set(conf.pos.x + offset.x, sideLightHeight, conf.pos.z + offset.z);
+                    sideLight.angle = Math.PI / 4;
+                    sideLight.penumbra = 0.5;
+                    sideLight.decay = 1.1;
+
+                    const sideTarget = new THREE.Object3D();
+                    sideTarget.position.set(conf.pos.x + (offset.x * 0.15), sideLightHeight, conf.pos.z + (offset.z * 0.15));
+                    sideLight.target = sideTarget;
+                    scene.add(sideTarget);
+                    scene.add(sideLight);
+                });
 
                 const spotLight = new THREE.SpotLight(0xfff4d0, 16);
                 spotLight.position.set(conf.pos.x + 1.2, 8.5, conf.pos.z + 1.2);
