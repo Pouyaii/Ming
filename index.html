@@ -637,9 +637,9 @@
 
             const woodFloorMat = new THREE.MeshStandardMaterial({ 
                 map: bloodwoodTex,
-                roughness: 0.35, 
-                metalness: 0.1,
-                color: 0xaa8888 
+                roughness: 0.78,
+                metalness: 0.03,
+                color: 0x8a6666 
             });
             
             const ceramicMatH = new THREE.MeshStandardMaterial({ 
@@ -1086,10 +1086,17 @@
             };
 
             const artifactDefaultOverrides = {
-                north: { rotationX: 0 },
+                north: { positionY: 3.000, scaleUniform: 3.600, rotationX: 0 },
                 south: { positionY: 2.19, scaleUniform: 3, rotationX: 3.142 },
                 east: { positionY: 1.95, scaleUniform: 1.5 },
                 west: { positionY: 1.89, scaleUniform: 2 }
+            };
+
+            const artifactLightTuning = {
+                north: { midY: 3.000, sideDistance: 3.7, sideTargetOffset: 1.2, sideIntensity: 1.9 },
+                south: { midY: 2.19, sideDistance: 3.4, sideTargetOffset: 1.1, sideIntensity: 1.8 },
+                east: { midY: 1.95, sideDistance: 3.2, sideTargetOffset: 1.0, sideIntensity: 1.65 },
+                west: { midY: 1.89, sideDistance: 3.2, sideTargetOffset: 1.0, sideIntensity: 1.65 }
             };
 
             const alignArtifactToPedestal = (object, targetPosition, targetHeight = 1.2, pedestalTopY = 2.2) => {
@@ -1200,35 +1207,38 @@
                 fillLight.position.set(conf.pos.x + 1.5, 2.8, conf.pos.z + 1.5);
                 scene.add(fillLight);
 
-                const sideLightDistance = 3.4;
-                const sideLightHeight = 2.6;
-                const sideLightIntensity = 1.4;
-                const sideLightRange = 11;
+                const lightTuning = artifactLightTuning[conf.id] || { midY: 2.2, sideDistance: 3.2, sideTargetOffset: 1.0, sideIntensity: 1.6 };
+                const radialDir = conf.pos.clone().setY(0).normalize();
+                const sideAxis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), radialDir).normalize();
+                const sideLightRange = 12;
                 const sideLightOffsets = [
-                    new THREE.Vector3(sideLightDistance, 0, 0),
-                    new THREE.Vector3(-sideLightDistance, 0, 0),
-                    new THREE.Vector3(0, 0, sideLightDistance),
-                    new THREE.Vector3(0, 0, -sideLightDistance)
+                    sideAxis.clone().multiplyScalar(lightTuning.sideDistance),
+                    sideAxis.clone().multiplyScalar(-lightTuning.sideDistance)
                 ];
 
                 sideLightOffsets.forEach((offset) => {
-                    const sideLight = new THREE.SpotLight(0xfff1dc, sideLightIntensity, sideLightRange);
-                    sideLight.position.set(conf.pos.x + offset.x, sideLightHeight, conf.pos.z + offset.z);
+                    const sideLight = new THREE.SpotLight(0xfff1dc, lightTuning.sideIntensity, sideLightRange);
+                    sideLight.position.set(conf.pos.x + offset.x, lightTuning.midY, conf.pos.z + offset.z);
                     sideLight.angle = Math.PI / 4;
-                    sideLight.penumbra = 0.5;
+                    sideLight.penumbra = 0.58;
                     sideLight.decay = 1.1;
 
+                    const inward = offset.clone().normalize().multiplyScalar(-lightTuning.sideTargetOffset);
                     const sideTarget = new THREE.Object3D();
-                    sideTarget.position.set(conf.pos.x + (offset.x * 0.15), sideLightHeight, conf.pos.z + (offset.z * 0.15));
+                    sideTarget.position.set(
+                        conf.pos.x + inward.x,
+                        lightTuning.midY,
+                        conf.pos.z + inward.z
+                    );
                     sideLight.target = sideTarget;
                     scene.add(sideTarget);
                     scene.add(sideLight);
                 });
 
-                const spotLight = new THREE.SpotLight(0xfff4d0, 16);
+                const spotLight = new THREE.SpotLight(0xfff4d0, 13.5);
                 spotLight.position.set(conf.pos.x + 1.2, 8.5, conf.pos.z + 1.2);
                 spotLight.angle = Math.PI / 7;
-                spotLight.penumbra = 0.45;
+                spotLight.penumbra = 0.62;
                 spotLight.decay = 1.2;
                 spotLight.distance = 24;
                 spotLight.target = artifactTarget;
